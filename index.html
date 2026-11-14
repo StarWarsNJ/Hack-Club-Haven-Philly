@@ -1,7 +1,29 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#151B20"><title>Snapback — One trampoline. Two rivals.</title>
-<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0C1114;color:#F6EEDF;font-family:Arial,Helvetica,sans-serif}body,main{display:grid;place-items:center}main{width:100%;height:100%;position:relative}canvas{display:block;outline:none;touch-action:none}button{font:inherit;cursor:pointer}#controls{position:absolute;right:12px;bottom:8px;display:flex;gap:8px}button{border:1px solid #65727B;color:#F6EEDF;background:#151B20;padding:5px 9px;font-size:12px}button:focus-visible{outline:2px solid #EEDC96;outline-offset:2px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style></head>
-<body><main aria-label="Snapback two-player arcade game"><canvas id="game" width="960" height="540" tabindex="0" role="img" aria-label="Snapback. Coral: A D move, W timed bounce or save, S dive. Mint: arrows. Space or Enter to play, Escape pause, M sound, V reduced motion."></canvas><div id="controls"><button id="sound" type="button">M · Sound on</button><button id="motion" type="button">V · Reduce motion</button></div><p id="status" class="sr-only" aria-live="polite">Two players. One trampoline. Space or Enter to play.</p></main>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101417">
+<title>Snapback</title>
+<style>
+* { box-sizing: border-box }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #101417; color: #F2EDE3; font-family: Arial, Helvetica, sans-serif }
+body, main { display: grid; place-items: center }
+main { width: 100%; height: 100%; position: relative }
+canvas { display: block; outline: none; touch-action: none }
+#controls { position: absolute; left: 50%; top: 75%; display: flex; gap: 24px; transform: translateX(-50%) }
+#controls[hidden] { display: none }
+button { border: 0; border-bottom: 1px solid #56645D; color: #F2EDE3; background: transparent; padding: 8px 0; font: 12px Arial, Helvetica, sans-serif; cursor: pointer; white-space: nowrap }
+button:focus-visible { outline: 2px solid #E6D5A5; outline-offset: 5px }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%) }
+</style>
+</head>
+<body>
+<main aria-label="Snapback two-player arcade game">
+<canvas id="game" width="960" height="540" tabindex="0" role="img" aria-label="Snapback. Coral uses A and D to move, W to bounce or save, S to dive. Mint uses the arrow keys. Space or Enter starts, Escape pauses, M toggles sound, V reduces motion."></canvas>
+<div id="controls" hidden><button id="sound" type="button">M · Sound on</button><button id="motion" type="button">V · Motion full</button></div>
+<p id="status" class="sr-only" aria-live="polite">Snapback. Space or Enter to play.</p>
+</main>
 <script>
 'use strict';
 const CONFIG = Object.freeze({
@@ -18,52 +40,58 @@ const CONFIG = Object.freeze({
   player:{
     width:28,
     height:40,
-    gravity:.48,
-    airAccel:.48,
-    maxVx:5.8,
-    noInputDrag:.96,
-    diveGravityBonus:.32,
+    gravity:.52,
+    airAccel:.7,
+    turnAccel:1,
+    maxVx:6.4,
+    noInputDrag:.84,
+    diveGravityBonus:.6,
     maxFallVy:19,
-    knockDrag:.985,
-    escapeControl:.65,
-    spawnX:[370,590],
-    spawnY:210,
-    ceilingY:-64
+    knockDrag:.982,
+    escapeControl:.8,
+    spawnX:[410,550],
+    spawnY:340,
+    spawnVy:-5.2,
+    ceilingY:20
   },
   bounce:{
     startTier:2,
-    minTier:1,
+    minTier:2,
     maxTier:5,
-    baseImpulse:8,
-    impulsePerTier:2,
-    perfectWindowTicks:12,
-    pressCooldownTicks:15,
-    netWaveGainMax:1.2
+    baseImpulse:7.2,
+    impulsePerTier:1.8,
+    perfectWindowTicks:14,
+    pressCooldownTicks:20,
+    netWaveGainMax:1,
+    compressionTicks:3,
+    strongCompressionTicks:5,
+    strongImpactSpeed:15,
+    perfectImpactMultiplier:1.25
   },
   trampoline:{
-    left:180,
-    right:780,
+    left:230,
+    right:730,
     equilibriumY:410,
-    samples:25,
-    maxDeflection:38,
+    samples:33,
+    maxDeflection:30,
     maxVelocity:8,
-    spring:.035,
-    neighborCoupling:.11,
-    damping:.91,
-    impactStrength:2.4,
-    diveImpactMultiplier:1.5,
+    spring:.04,
+    neighborCoupling:.2,
+    damping:.94,
+    impactStrength:3.6,
+    diveImpactMultiplier:1.25,
     impactSpeedReference:10,
     impactScaleMin:.6,
     impactScaleMax:2
   },
   stomp:{
     minRelativeFallSpeed:2.5,
-    horizontalBaseKnock:7,
-    horizontalSpeedScale:.25,
+    horizontalBaseKnock:8,
+    horizontalSpeedScale:.22,
     horizontalKnockMax:11,
     defenderDownVy:3,
-    protectionTicks:16,
-    attackerBounceImpulse:13
+    protectionTicks:24,
+    attackerBounceImpulse:12.5
   },
   collision:{
     epsilon:.01,
@@ -74,20 +102,20 @@ const CONFIG = Object.freeze({
     sweepSamples:6
   },
   bumper:{
-    leftX:90,
-    rightX:870,
-    topY:270,
-    bottomY:435,
-    preContactTicks:12,
-    postContactGraceTicks:5,
-    inwardLaunchVx:9.5,
+    leftX:130,
+    rightX:830,
+    topY:250,
+    bottomY:440,
+    preContactTicks:14,
+    postContactGraceTicks:7,
+    inwardLaunchVx:10,
     upwardLaunchVy:13,
     softReboundVx:1.5,
     rearmDistance:50,
     promptDistance:90
   },
   overdrive:{
-    enabled:true,
+    enabled:false,
     beginSeconds:25,
     warningSeconds:2,
     shrinkSeconds:12,
@@ -95,15 +123,14 @@ const CONFIG = Object.freeze({
   },
   scoring:{
     pointsToWin:3,
-    pointPresentationSeconds:.6
+    pointPresentationSeconds:.4
   },
   presentation:{
     eventTicks:32,
     maxEffects:32,
-    stompShakePx:4,
-    saveShakePx:3,
+    stompShakePx:2.5,
+    saveShakePx:1.5,
     shakeTicks:8,
-    helpTicks:360,
     squashTicks:6,
     trailTicks:7
   },
@@ -115,40 +142,48 @@ const CONFIG = Object.freeze({
     peakGain:.7,
     releasePadding:.01,
     bounce:{
-      baseHz:140,
-      tierHz:25,
-      seconds:.11,
-      endHz:85,
+      baseHz:115,
+      tierHz:14,
+      seconds:.095,
+      endHz:62,
+      volume:.38,
+      variations:[.97,1.02,1,.99],
       wave:'triangle'
     },
     perfect:{
-      notes:[300,450],
-      seconds:.14,
-      spacing:.06,
+      notes:[220,440],
+      ends:[330,660],
+      seconds:.13,
+      spacing:.035,
+      volume:.5,
       wave:'triangle'
     },
     stomp:{
-      notes:[100,65],
-      ends:[40,65],
-      seconds:.15,
+      notes:[92,56],
+      ends:[40,32],
+      seconds:.12,
+      volume:.65,
       wave:'triangle'
     },
     save:{
-      notes:[180,360],
-      ends:[720,540],
-      seconds:.25,
-      spacing:.08,
+      notes:[196,392],
+      ends:[392,588],
+      seconds:.18,
+      spacing:.035,
+      volume:.55,
       wave:'triangle'
     },
     point:{
       notes:[330,440],
-      seconds:.16,
+      volume:.45,
+      seconds:.14,
       spacing:.07,
       wave:'triangle'
     },
     victory:{
       notes:[330,440,660],
-      seconds:.28,
+      volume:.5,
+      seconds:.22,
       spacing:.1,
       wave:'triangle'
     },
@@ -161,105 +196,118 @@ const CONFIG = Object.freeze({
     dive:{
       notes:[240],
       ends:[110],
-      seconds:.08,
+      seconds:.07,
+      volume:.2,
       wave:'sine',
       cooldownTicks:18
     }
   },
   colors:{
-    ink:'#151B20',
-    deep:'#0C1114',
-    ivory:'#F6EEDF',
-    coral:'#D86751',
-    mint:'#8DD0CF',
-    gold:'#EEDC96',
-    steel:'#65727B'
+    ink:'#101417',
+    deep:'#0B0F11',
+    ivory:'#F2EDE3',
+    coral:'#E36B55',
+    mint:'#82D8BD',
+    gold:'#E6D5A5',
+    steel:'#7F898B'
   },
   art: {
-    centerX: 480,
-    margin: 26,
-    frameTop: 112,
-    footerY: 521,
-    score: {
-      top: 18,
-      baseline: 73,
-      size: 66,
-      spread: 45,
-      playerLeft: 28,
-      playerRight: 932,
-      nameY: 29,
-      pipY: 54,
-      keysY: 88
+    "centerX": 480,
+    "score": {
+      "y": 55,
+      "size": 37,
+      "spacing": 37,
+      "pulseTicks": 22,
+      "pulseScale": 0.2
     },
-    title: {
-      labelY: 34,
-      wordY: 145,
-      wordSize: 106,
-      wordWidth: 704,
-      wordBend: 7,
-      underlineY: 170,
-      taglineY: 197,
-      netY: 326,
-      netLeft: 160,
-      netRight: 800,
-      athleteX: [255, 705],
-      athleteScale: 2,
-      hopHeight: 36,
-      hopSpeed: 1.9,
-      nameY: 366,
-      moveY: 395,
-      actionY: 419,
-      playY: 477
+    "floor": {
+      "y": 478,
+      "width": 304,
+      "height": 22,
+      "lineY": 492
     },
-    player: {
-      squashWidth: .22,
-      squashHeight: .18,
-      stretch: .08,
-      lean: .11,
-      eyeSize: 2.1,
-      protectionRadius: 23,
-      trailWidth: 2,
-      maxTrail: 3
+    "title": {
+      "wordY": 144,
+      "wordScale": 1.43,
+      "letterWidth": 52,
+      "letterGap": 5,
+      "netY": 367,
+      "netLeft": 268,
+      "netRight": 692,
+      "playerX": [
+        407,
+        553
+      ],
+      "playerScale": 1.35,
+      "hopHeight": 63,
+      "hopSpeed": 2.8,
+      "promptY": 457,
+      "promptSize": 16
     },
-    net: {
-      cordWidth: 4,
-      highlightWidth: 1.25,
-      meshDepth: 13,
-      meshStride: 2,
-      postDepth: 30,
-      footHalf: 11,
-      stitchStep: 16
+    "player": {
+      "squashWidth": 0.25,
+      "squashHeight": 0.2,
+      "stretch": 0.12,
+      "lean": 0.16,
+      "armSwing": 5,
+      "footSwing": 3,
+      "eyeSize": 1.2,
+      "expressionTicks": 18,
+      "trailSpeed": 9,
+      "trailTicks": 8,
+      "trailLength": 0.9,
+      "trailOpacity": 0.22,
+      "chargeSize": 2.8
     },
-    bumper: {
-      halfWidth: 7,
-      bracket: 13,
-      promptWidth: 92,
-      promptOffset: 42,
-      arrowOffset: 23
+    "net": {
+      "cordWidth": 4,
+      "highlightWidth": 1,
+      "meshDepth": 11,
+      "postDepth": 33,
+      "footHalf": 13,
+      "stitchStep": 16,
+      "underOffset": 4
     },
-    effect: {
-      perfectSize: 18,
-      stompSize: 24,
-      saveSize: 20,
-      rise: 9,
-      fadeStart: .65,
-      impactTicks: 9,
-      starRadius: 18,
-      shakeX: 2.8,
-      shakeY: 2.1
+    "bumper": {
+      "width": 5,
+      "anchorWidth": 15,
+      "anchorHeight": 8,
+      "bend": 10,
+      "bendTicks": 14,
+      "readyWidth": 3,
+      "cueLength": 30
     },
-    overlay: {
-      top: 117,
-      bottom: 474,
-      titleY: 221,
-      actionY: 272,
-      controlsY: 334,
-      settingsY: 443
+    "effect": {
+      "bounceTicks": 10,
+      "impactTicks": 11,
+      "ringRadius": 24,
+      "ringHeight": 7,
+      "impactRadius": 19,
+      "shakeX": 2.8,
+      "shakeY": 2.1
     },
-    colors: {
-      marking: '#293238',
-      mesh: '#756F4F',
-      dimPaper: '#B8B7AC'
+    "pause": {
+      "titleY": 211,
+      "titleSize": 48,
+      "promptY": 250,
+      "controlsY": 321,
+      "settingsY": 401
+    },
+    "winner": {
+      "footY": 301,
+      "scale": 2.6,
+      "hopHeight": 9,
+      "hopSpeed": 4,
+      "scoreY": 368,
+      "scoreSize": 54,
+      "promptY": 434
+    },
+    "colors": {
+      "marking": "#192126",
+      "mesh": "#665F4C",
+      "dim": "#7F898B",
+      "pit": "#0B0F11",
+      "skin": "#F2EDE3"
     }
   }
 });
@@ -286,7 +334,7 @@ function createPlayer(id){
     x:CONFIG.player.spawnX[id],
     y:CONFIG.player.spawnY,
     vx:0,
-    vy:0,
+    vy:CONFIG.player.spawnVy,
     prevX:CONFIG.player.spawnX[id],
     prevY:CONFIG.player.spawnY,
     tier:CONFIG.bounce.startTier,
@@ -294,12 +342,17 @@ function createPlayer(id){
     netPressTick:NEVER,
     savePressTick:NEVER,
     netPressReady:0,
+    bouncePressed:false,
+    compression:null,
     protection:0,
     contact:null,
     bumperLatch:[false,false],
     diving:false,
     diveSoundReady:0,
     lastLandingTick:NEVER,
+    lastBounceTick:NEVER,
+    lastPerfectTick:NEVER,
+    lastHitTick:NEVER,
     lastSaveTick:NEVER,
     lastStompTick:NEVER,
     facing:id===0?1:-1
@@ -434,34 +487,39 @@ function acceptPresses(s,pressed){
   for(const p of s.players){
     if(!pressed.has(PLAYER_KEYS[p.id].bounce))continue;
     p.savePressTick=s.rallyTicks;
-    if(s.rallyTicks>=p.netPressReady){
+    if(!p.compression&&!p.bouncePressed&&s.rallyTicks>=p.netPressReady){
+      p.bouncePressed=true;
       p.netPressTick=s.rallyTicks;
       p.netPressReady=s.rallyTicks+CONFIG.bounce.pressCooldownTicks;
     }
   }
 }
 function steerAndMove(p,held){
-  const c=CONFIG.player,
-  k=PLAYER_KEYS[p.id],
-  dir=Number(!!held[k.right])-Number(!!held[k.left]);
-  p.prevX=p.x;
-  p.prevY=p.y;
-  p.diving=!!held[k.dive]&&p.vy>=0;
-  if(p.protection>0)p.protection--;
+  const c=CONFIG.player
+  const k=PLAYER_KEYS[p.id]
+  const dir=Number(!!held[k.right])-Number(!!held[k.left])
+  p.prevX=p.x
+  p.prevY=p.y
+  p.diving=!p.compression&&!!held[k.dive]&&p.vy>=0
+  if(p.protection>0)p.protection--
   if(Math.abs(p.vx)>c.maxVx){
-    p.vx*=c.knockDrag;
-    if(dir&&sign(dir)!==sign(p.vx))p.vx+=dir*c.airAccel*c.escapeControl;
-  }else if(dir)p.vx=clamp(p.vx+dir*c.airAccel,-c.maxVx,c.maxVx);
-  else p.vx*=c.noInputDrag;
-  if(dir)p.facing=dir;
-  p.vy=Math.min(c.maxFallVy,p.vy+c.gravity+(p.diving?c.diveGravityBonus:0));
-  p.x+=p.vx;
-  p.y+=p.vy;
+    p.vx*=c.knockDrag
+    if(dir&&sign(dir)!==sign(p.vx))p.vx+=dir*c.airAccel*c.escapeControl
+  }else if(dir){
+    const acceleration=p.vx*dir<0?c.turnAccel:c.airAccel
+    p.vx=clamp(p.vx+dir*acceleration,-c.maxVx,c.maxVx)
+  }else p.vx*=c.noInputDrag
+  if(dir)p.facing=dir
+  p.x+=p.vx
+  if(p.compression)return
+  p.vy=Math.min(c.maxFallVy,p.vy+c.gravity+(p.diving?c.diveGravityBonus:0))
+  p.y+=p.vy
   if(p.y<c.ceilingY){
-    p.y=c.ceilingY;
-    p.vy=Math.max(0,p.vy);
+    p.y=c.ceilingY
+    p.vy=Math.max(0,p.vy)
   }
 }
+
 function axisSweep(aMin,aMax,bMin,bMax,delta){
   if(delta===0)return aMax>bMin&&aMin<bMax?[-Infinity,Infinity]:[Infinity,-Infinity];
   return delta>0?[(bMin-aMax)/delta,(bMax-aMin)/delta]:[(bMax-aMin)/delta,(bMin-aMax)/delta];
@@ -499,8 +557,13 @@ function performStomp(s,a,d,t){
   d.vy=Math.max(d.vy,CONFIG.stomp.defenderDownVy);
   d.tier=CONFIG.bounce.minTier;
   d.protection=CONFIG.stomp.protectionTicks;
+  d.compression=null;
+  a.compression=null;
+  d.lastHitTick=s.rallyTicks;
   a.vy=-CONFIG.stomp.attackerBounceImpulse;
   a.lastStompTick=s.rallyTicks;
+  a.bouncePressed=false;
+  a.netPressTick=NEVER;
   d.lastStompTick=s.rallyTicks;
   s.stats.stomps[a.id]++;
   emit(s,'STOMP',{
@@ -561,6 +624,8 @@ function performSave(s,p){
   p.vx=direction*CONFIG.bumper.inwardLaunchVx;
   p.vy=-CONFIG.bumper.upwardLaunchVy;
   p.lastSaveTick=s.rallyTicks;
+  p.bouncePressed=false;
+  p.compression=null;
   p.netPressTick=NEVER;
   p.savePressTick=NEVER;
   p.contact=null;
@@ -608,7 +673,7 @@ function resolveBumperSave(s,p){
   return false;
 }
 function findNetLanding(s,p){
-  if(p.vy<=0)return null;
+  if(p.compression||p.vy<=0)return null;
   const b=netBounds(s),
   h=CONFIG.player.height,
   w=CONFIG.player.width,
@@ -645,38 +710,58 @@ function findNetLanding(s,p){
   }
   return null;
 }
-function resolveNetLandings(s){
-  const pending=[];
+function updateCompression(s){
+  const bounds=netBounds(s)
   for(const p of s.players){
-    const hit=findNetLanding(s,p);
-    if(!hit)continue;
-    const perfect=s.rallyTicks-p.netPressTick<=CONFIG.bounce.perfectWindowTicks&&p.netPressTick<=s.rallyTicks;
-    p.tier=clamp(p.tier+(perfect?1:-1),CONFIG.bounce.minTier,CONFIG.bounce.maxTier);
-    const wave=clamp(-hit.vy,-CONFIG.bounce.netWaveGainMax,CONFIG.bounce.netWaveGainMax),
-    impact=CONFIG.trampoline.impactStrength*clamp(p.vy/CONFIG.trampoline.impactSpeedReference,CONFIG.trampoline.impactScaleMin,CONFIG.trampoline.impactScaleMax)*(p.diving?CONFIG.trampoline.diveImpactMultiplier:1);
-    p.x=hit.x;
-    p.y=hit.y-CONFIG.player.height-CONFIG.collision.epsilon;
-    p.vy=-(CONFIG.bounce.baseImpulse+p.tier*CONFIG.bounce.impulsePerTier+wave);
-    p.netPressTick=NEVER;
-    p.savePressTick=NEVER;
-    p.lastLandingTick=s.rallyTicks;
-    s.stats.bounces[p.id]++;
-    if(perfect)s.stats.perfect[p.id]++;
-    pending.push({
-      x:clamp(hit.x,netBounds(s).left,netBounds(s).right),
-      strength:impact
-    });
-    emit(s,perfect?'PERFECT':'BOUNCE',{
-      id:p.id,
-      x:p.x,
-      y:hit.y,
-      tier:p.tier,
-      wave
-    });
+    const bounce=p.compression
+    if(!bounce)continue
+    const net=sampleNetAt(s,p.x)
+    if(p.x+CONFIG.player.width/2<bounds.left||p.x-CONFIG.player.width/2>bounds.right){
+      p.compression=null
+      p.vy=Math.max(0,net.vy)
+      continue
+    }
+    p.y=net.y-CONFIG.player.height-CONFIG.collision.epsilon
+    p.vy=net.vy
+    bounce.remaining--
+    if(bounce.remaining>0)continue
+    p.vy=-bounce.launch
+    p.compression=null
+    p.bouncePressed=false
+    p.lastBounceTick=s.rallyTicks
+    if(bounce.perfect)p.lastPerfectTick=s.rallyTicks
+    emit(s,'RELEASE',{id:p.id,x:p.x,y:net.y,perfect:bounce.perfect,tier:p.tier})
   }
-  for(const i of pending)impactNet(s,i.x,i.strength);
-  return pending.length;
 }
+function resolveNetLandings(s){
+  const pending=[]
+  for(const p of s.players){
+    const hit=findNetLanding(s,p)
+    if(!hit)continue
+    const c=CONFIG.bounce
+    const perfect=s.rallyTicks-p.netPressTick<=c.perfectWindowTicks&&p.netPressTick<=s.rallyTicks
+    p.tier=clamp(p.tier+(perfect?1:-1),c.minTier,c.maxTier)
+    const wave=clamp(-hit.vy,-c.netWaveGainMax,c.netWaveGainMax)
+    const speed=p.vy
+    const strong=perfect||p.diving||speed>=c.strongImpactSpeed
+    const duration=strong?c.strongCompressionTicks:c.compressionTicks
+    const impact=CONFIG.trampoline.impactStrength*clamp(speed/CONFIG.trampoline.impactSpeedReference,CONFIG.trampoline.impactScaleMin,CONFIG.trampoline.impactScaleMax)*(p.diving?CONFIG.trampoline.diveImpactMultiplier:1)*(perfect?c.perfectImpactMultiplier:1)
+    p.x=hit.x
+    p.y=hit.y-CONFIG.player.height-CONFIG.collision.epsilon
+    p.vy=0
+    p.compression={remaining:duration,duration,launch:c.baseImpulse+p.tier*c.impulsePerTier+wave,perfect}
+    p.netPressTick=NEVER
+    p.savePressTick=NEVER
+    p.lastLandingTick=s.rallyTicks
+    s.stats.bounces[p.id]++
+    if(perfect)s.stats.perfect[p.id]++
+    pending.push({x:clamp(hit.x,netBounds(s).left,netBounds(s).right),strength:impact})
+    emit(s,perfect?'PERFECT':'BOUNCE',{id:p.id,x:p.x,y:hit.y,tier:p.tier,wave})
+  }
+  for(const impact of pending)impactNet(s,impact.x,impact.strength)
+  return pending.length
+}
+
 function resolveRallyOutcome(s){
   if(s.phase!=='RALLY')return false;
   const out=s.players.map(p=>p.y>CONFIG.canvas.height);
@@ -745,6 +830,7 @@ function stepSimulation(s,input={
     }
   }
   stepNet(s);
+  updateCompression(s);
   resolvePlayerContact(s);
   for(const p of s.players)resolveBumperSave(s,p);
   resolveNetLandings(s);
@@ -837,442 +923,426 @@ function landingSoon(s,p){
   t=(-p.vy+Math.sqrt(Math.max(0,p.vy*p.vy+2*g*Math.max(0,distance))))/g;
   return distance>=0&&t<=CONFIG.bounce.perfectWindowTicks;
 }
-// RENDERER_START
-// Canvas-only presentation. Reads simulation state; never mutates it.
-const ART = CONFIG.art;
-function artText(ctx, text, x, y, size, color = CONFIG.colors.ivory, align = 'center', weight = 700) {
-  ctx.fillStyle = color;
-  ctx.textAlign = align;
-  ctx.textBaseline = 'alphabetic';
-  ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
-  ctx.fillText(text, x, y);
+const ART = CONFIG.art
+function drawText(ctx, text, x, y, size, color = CONFIG.colors.ivory, weight = 700) {
+  ctx.fillStyle = color
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'alphabetic'
+  ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`
+  ctx.fillText(text, x, y)
 }
-function artLine(ctx, points, color, width = 1) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = width;
-  ctx.beginPath();
-  for (let i = 0; i < points.length; i++) {
-    if (i === 0) ctx.moveTo(points[i][0], points[i][1]);
-    else ctx.lineTo(points[i][0], points[i][1]);
+function line(ctx, points, color, width = 1) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = width
+  ctx.beginPath()
+  points.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))
+  ctx.stroke()
+}
+function shape(ctx, points, color) {
+  ctx.fillStyle = color
+  ctx.beginPath()
+  points.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]))
+  ctx.closePath()
+  ctx.fill()
+}
+function dot(ctx, x, y, radius, color) {
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.arc(x, y, radius, 0, Math.PI * 2)
+  ctx.fill()
+}
+function playerColor(id) {
+  return id === 0 ? CONFIG.colors.coral : CONFIG.colors.mint
+}
+function backdrop(ctx) {
+  const C = CONFIG.colors
+  ctx.fillStyle = C.ink
+  ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height)
+  ctx.fillStyle = ART.colors.marking
+  ctx.beginPath()
+  ctx.ellipse(ART.centerX, ART.floor.y, ART.floor.width, ART.floor.height, 0, 0, Math.PI * 2)
+  ctx.fill()
+  line(ctx, [[ART.centerX - 105, ART.floor.lineY], [ART.centerX + 105, ART.floor.lineY]], C.ink, 2)
+}
+function drawScore(ctx, s, y = ART.score.y, size = ART.score.size) {
+  const A = ART.score
+  const point = s.effects.findLast(e => e.type === 'POINT')
+  const age = point ? s.totalTicks - point.tick : A.pulseTicks
+  for (const id of [0, 1]) {
+    const pulse = !s.reducedMotion && point?.id === id && age < A.pulseTicks
+      ? Math.sin(Math.PI * age / A.pulseTicks) * A.pulseScale : 0
+    ctx.save()
+    ctx.translate(ART.centerX + (id ? A.spacing : -A.spacing), y)
+    ctx.scale(1 + pulse, 1 + pulse)
+    drawText(ctx, String(s.scores[id]), 0, 0, size, playerColor(id), 800)
+    ctx.restore()
   }
-  ctx.stroke();
+  dot(ctx, ART.centerX, y - size * .32, 2, ART.colors.dim)
 }
-function artPolygon(ctx, points, color) {
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  points.forEach((point, i) => i === 0 ? ctx.moveTo(...point) : ctx.lineTo(...point));
-  ctx.closePath();
-  ctx.fill();
-}
-function artCircle(ctx, x, y, radius, color, stroke = false, width = 1) {
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  if (stroke) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = color;
-    ctx.fill();
+function drawNet(ctx, s) {
+  const C = CONFIG.colors
+  const N = ART.net
+  const bounds = netBounds(s)
+  const points = s.net.d.map((d, i) => [mix(bounds.left, bounds.right, i / (s.net.d.length - 1)), CONFIG.trampoline.equilibriumY + d])
+  const y = CONFIG.trampoline.equilibriumY
+  ctx.save()
+  ctx.globalAlpha = .7
+  for (const i of points.slice(0, -1).keys()) {
+    const a = points[i]
+    const b = points[i + 1]
+    line(ctx, [a, [(a[0] + b[0]) / 2, Math.max(a[1], b[1]) + N.meshDepth], b], ART.colors.mesh)
   }
-}
-function artPlayerColor(id) {
-  return id === 0 ? CONFIG.colors.coral : CONFIG.colors.mint;
-}
-function artPlayerName(id) {
-  return id === 0 ? 'CORAL' : 'MINT';
-}
-function artBackdrop(ctx) {
-  const C = CONFIG.colors;
-  ctx.fillStyle = C.ink;
-  ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
-  artLine(ctx, [[ART.margin, ART.frameTop], [CONFIG.canvas.width - ART.margin, ART.frameTop]], ART.colors.marking);
-  artLine(ctx, [[ART.margin, 503], [CONFIG.canvas.width - ART.margin, 503]], ART.colors.marking);
-  // Quiet court registration marks, well outside the collision surface.
-  for (const x of [ART.margin, CONFIG.canvas.width - ART.margin]) {
-    artLine(ctx, [[x, 132], [x, 154]], ART.colors.marking, 2);
-    artLine(ctx, [[x, 458], [x, 484]], ART.colors.marking, 2);
+  line(ctx, points.map(p => [p[0], p[1] + N.underOffset]), ART.colors.mesh, 2)
+  ctx.restore()
+  for (const [x, direction] of [[bounds.left, 1], [bounds.right, -1]]) {
+    line(ctx, [[x, y], [x - direction * 8, y + N.postDepth], [x + direction * N.footHalf, y + N.postDepth]], C.gold, 4)
+    line(ctx, [[x - direction * 7, y + 12], [x + direction * 17, y + 30]], ART.colors.mesh, 2)
+    dot(ctx, x, y, 5, C.gold)
+    dot(ctx, x, y, 2, C.ink)
   }
+  line(ctx, points, C.gold, N.cordWidth)
+  ctx.save()
+  ctx.globalAlpha = .55
+  line(ctx, points, C.ivory, N.highlightWidth)
+  ctx.restore()
 }
-function artPip(ctx, x, y, filled, id, size = 7) {
-  const color = filled ? artPlayerColor(id) : CONFIG.colors.steel;
-  ctx.strokeStyle = color;
-  ctx.fillStyle = color;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  if (id === 0) {
-    ctx.moveTo(x, y - size / 2);
-    ctx.lineTo(x + size / 2, y);
-    ctx.lineTo(x, y + size / 2);
-    ctx.lineTo(x - size / 2, y);
-    ctx.closePath();
-  } else ctx.arc(x, y, size / 2, 0, Math.PI * 2);
-  if (filled) ctx.fill();
-  else ctx.stroke();
+function bumperReady(s, p, side) {
+  if (!p.recoveryCharge) return false
+  const B = CONFIG.bumper
+  if (p.contact?.side === side && s.rallyTicks - p.contact.tick <= B.postContactGraceTicks) return true
+  const direction = side === 0 ? -1 : 1
+  const speed = p.vx * direction
+  if (speed <= CONFIG.collision.epsilon) return false
+  const x = side === 0 ? B.leftX : B.rightX
+  const distance = (x - p.x - direction * CONFIG.player.width / 2) * direction
+  const ticks = distance / speed
+  if (distance < 0 || distance > B.promptDistance || ticks > B.preContactTicks) return false
+  const gravity = CONFIG.player.gravity + (p.diving ? CONFIG.player.diveGravityBonus : 0)
+  const y = p.y + p.vy * ticks + gravity * ticks * (ticks + 1) / 2
+  return y + CONFIG.player.height >= B.topY && y <= B.bottomY
 }
-function artCharge(ctx, x, y, charged, color) {
-  artCircle(ctx, x, y, 8, charged ? color : CONFIG.colors.steel, true, 1.5);
-  if (charged) {
-    artLine(ctx, [[x + 3, y - 3], [x - 3, y - 3], [x - 3, y + 3]], color, 1.5);
-    artPolygon(ctx, [[x - 6, y + 1], [x, y + 1], [x - 3, y + 5]], color);
-  } else artLine(ctx, [[x - 4, y + 4], [x + 4, y - 4]], CONFIG.colors.steel, 1.5);
-}
-function artHud(ctx, s) {
-  const H = ART.score,
-  C = CONFIG.colors;
-  for (const p of s.players) {
-    const left = p.id === 0,
-    x = left ? H.playerLeft : H.playerRight,
-    dir = left ? 1 : -1;
-    artText(ctx, `${p.id + 1} / ${artPlayerName(p.id)}`, x, H.nameY, 18, artPlayerColor(p.id), left ? 'left' : 'right', 900);
-    for (let i = 0; i < CONFIG.bounce.maxTier; i++) artPip(ctx, x + dir * (5 + i * 15), H.pipY, i < p.tier, p.id);
-    artCharge(ctx, x + dir * 96, H.pipY, p.recoveryCharge > 0, artPlayerColor(p.id));
-    artText(ctx, p.recoveryCharge ? 'SAVE' : 'USED', x + dir * 113, H.pipY + 4, 10, p.recoveryCharge ? C.ivory : C.steel, left ? 'left' : 'right');
-    const keys = left ? 'A D MOVE    W TIME / SAVE    S DIVE' : '← → MOVE    ↑ TIME / SAVE    ↓ DIVE';
-    artText(ctx, keys, x, H.keysY, 12, ART.colors.dimPaper, left ? 'left' : 'right', 600);
-  }
-  artText(ctx, 'FIRST TO 3', ART.centerX, H.top, 11, C.gold);
-  artText(ctx, String(s.scores[0]), ART.centerX - H.spread, H.baseline, H.size, C.ivory, 'center', 900);
-  artText(ctx, ':', ART.centerX, H.baseline - 7, 38, C.steel, 'center', 900);
-  artText(ctx, String(s.scores[1]), ART.centerX + H.spread, H.baseline, H.size, C.ivory, 'center', 900);
-  artText(ctx, `RALLY ${s.rallyIndex}`, ART.centerX, 95, 10, C.steel);
-}
-// The visual polyline follows exactly the same samples as sampleNetAt().
-function artNet(ctx, s) {
-  const C = CONFIG.colors,
-  N = ART.net,
-  bounds = netBounds(s),
-  points = [];
-  for (let i = 0; i < CONFIG.trampoline.samples; i++) {
-    points.push([mix(bounds.left, bounds.right, i / (CONFIG.trampoline.samples - 1)), CONFIG.trampoline.equilibriumY + s.net.d[i]]);
-  }
-  ctx.save();
-  ctx.globalAlpha = .68;
-  for (let i = 0; i < points.length - N.meshStride; i += N.meshStride) {
-    const a = points[i],
-    b = points[i + N.meshStride];
-    artLine(ctx, [a, [mix(a[0], b[0], .5), Math.max(a[1], b[1]) + N.meshDepth], b], ART.colors.mesh, 1);
-  }
-  ctx.restore();
-  artLine(ctx, points, C.gold, N.cordWidth);
-  artLine(ctx, points, C.ivory, N.highlightWidth);
-  for (const x of [bounds.left, bounds.right]) {
-    artLine(ctx, [[x, CONFIG.trampoline.equilibriumY], [x, CONFIG.trampoline.equilibriumY + N.postDepth]], C.gold, 3);
-    artLine(ctx, [[x - N.footHalf, CONFIG.trampoline.equilibriumY + N.postDepth], [x + N.footHalf, CONFIG.trampoline.equilibriumY + N.postDepth]], C.gold, 2);
-    artCircle(ctx, x, CONFIG.trampoline.equilibriumY, 4, C.gold);
-  }
-  if (CONFIG.overdrive.enabled && s.rallyTicks >= CONFIG.overdrive.beginSeconds * CONFIG.simulation.hz) {
-    ctx.save();
-    ctx.setLineDash([5, 5]);
-    for (const pair of [[CONFIG.trampoline.left, bounds.left], [bounds.right, CONFIG.trampoline.right]]) artLine(ctx, [[pair[0], 446], [pair[1], 446]], C.gold, 1);
-    ctx.restore();
-    artText(ctx, 'OVERDRIVE / SAFE SPAN CONTRACTING', ART.centerX, 452, 11, C.gold);
-  }
-}
-function artBumperOpportunity(s, p, side) {
-  if (!p.recoveryCharge) return false;
-  const B = CONFIG.bumper;
-  if (p.contact && p.contact.side === side && s.rallyTicks - p.contact.tick <= B.postContactGraceTicks) return true;
-  const outward = side === 0 ? -1 : 1;
-  if (p.vx * outward <= CONFIG.collision.epsilon) return false;
-  const plane = side === 0 ? B.leftX : B.rightX;
-  const edge = p.x + outward * CONFIG.player.width / 2;
-  const distance = (plane - edge) * outward;
-  const ticks = distance / (p.vx * outward);
-  if (distance < 0 || distance > B.promptDistance || ticks > B.preContactTicks) return false;
-  const gravity = CONFIG.player.gravity + (p.diving ? CONFIG.player.diveGravityBonus : 0);
-  const y = p.y + p.vy * ticks + gravity * ticks * (ticks + 1) / 2;
-  return y + CONFIG.player.height >= B.topY && y <= B.bottomY;
-}
-function artBumpers(ctx, s) {
-  const B = CONFIG.bumper,
-  A = ART.bumper,
-  C = CONFIG.colors;
-  for (let side = 0; side < 2; side++) {
-    const x = side === 0 ? B.leftX : B.rightX;
-    const ready = s.players.filter(p => artBumperOpportunity(s, p, side));
-    const color = ready.length === 1 ? artPlayerColor(ready[0].id) : ready.length ? C.gold : C.steel;
-    ctx.save();
-    ctx.globalAlpha = ready.length ? 1 : .7;
-    artLine(ctx, [[x, B.topY], [x, B.bottomY]], color, ready.length ? 4 : 2);
-    for (let y = B.topY + ART.net.stitchStep; y < B.bottomY; y += ART.net.stitchStep) artLine(ctx, [[x - A.halfWidth, y - 3], [x + A.halfWidth, y + 3]], color, 1);
-    for (const y of [B.topY, B.bottomY]) artLine(ctx, [[x - A.bracket, y], [x + A.bracket, y]], color, 2);
-    ctx.restore();
-    const direction = side === 0 ? 1 : -1;
-    artText(ctx, 'SAVE BAND', x, B.topY - 14, 10, C.steel);
-    if (ready.length) {
-      const cy = (B.topY + B.bottomY) / 2;
-      artLine(ctx, [[x + direction * 13, cy], [x + direction * A.arrowOffset, cy], [x + direction * 18, cy - 5]], color, 2);
-      for (const p of ready) {
-        const px = clamp(p.x + direction * A.promptOffset, 65, CONFIG.canvas.width - 65);
-        const py = clamp(p.y - 18, 142, 478);
-        artText(ctx, p.id === 0 ? '[W] SAVE' : '[↑] SAVE', px, py, 13, artPlayerColor(p.id), 'center', 900);
-      }
+function drawBumpers(ctx, s) {
+  const B = CONFIG.bumper
+  const A = ART.bumper
+  const C = CONFIG.colors
+  for (const side of [0, 1]) {
+    const x = side === 0 ? B.leftX : B.rightX
+    const direction = side === 0 ? 1 : -1
+    const ready = s.players.filter(p => bumperReady(s, p, side))
+    const color = ready.length === 1 ? playerColor(ready[0].id) : ready.length ? C.gold : ART.colors.dim
+    const impact = s.effects.findLast(e => (e.type === 'BUMPER' || e.type === 'SNAPBACK') && Math.abs(e.x - x) < CONFIG.player.width)
+    const age = impact ? s.totalTicks - impact.tick : A.bendTicks
+    const bend = !s.reducedMotion && age < A.bendTicks ? Math.sin(Math.PI * age / A.bendTicks) * A.bend : 0
+    const cy = impact ? clamp(impact.y, B.topY + A.cueLength, B.bottomY - A.cueLength) : (B.topY + B.bottomY) / 2
+    for (const y of [B.topY, B.bottomY]) {
+      ctx.fillStyle = ART.colors.marking
+      ctx.fillRect(x - A.anchorWidth / 2, y - A.anchorHeight / 2, A.anchorWidth, A.anchorHeight)
+      line(ctx, [[x - A.anchorWidth / 2, y], [x + A.anchorWidth / 2, y]], ART.colors.dim, 2)
+    }
+    ctx.beginPath()
+    ctx.moveTo(x, B.topY)
+    ctx.quadraticCurveTo(x - direction * bend, cy, x, B.bottomY)
+    ctx.strokeStyle = ART.colors.marking
+    ctx.lineWidth = A.width + 4
+    ctx.stroke()
+    ctx.strokeStyle = color
+    ctx.lineWidth = A.width
+    ctx.stroke()
+    for (const i of Array.from({ length: Math.floor((B.bottomY - B.topY) / ART.net.stitchStep) }).keys()) {
+      const y = B.topY + (i + 1) * ART.net.stitchStep
+      const u = (y - B.topY) / (B.bottomY - B.topY)
+      const bx = x - direction * bend * 2 * u * (1 - u)
+      line(ctx, [[bx - 2, y - 1], [bx + 2, y + 1]], C.ink, 1.5)
+    }
+    for (const p of ready) {
+      const y = clamp(p.y + CONFIG.player.height / 2, B.topY + A.cueLength / 2, B.bottomY - A.cueLength / 2)
+      line(ctx, [[x + direction * 7, y - A.cueLength / 2], [x + direction * 7, y + A.cueLength / 2]], playerColor(p.id), A.readyWidth)
     }
   }
 }
-function artArena(ctx, s) {
-  const bounds = netBounds(s),
-  C = CONFIG.colors;
-  ctx.fillStyle = C.deep;
-  ctx.fillRect(0, CONFIG.trampoline.equilibriumY, bounds.left, CONFIG.canvas.height - CONFIG.trampoline.equilibriumY);
-  ctx.fillRect(bounds.right, CONFIG.trampoline.equilibriumY, CONFIG.canvas.width - bounds.right, CONFIG.canvas.height - CONFIG.trampoline.equilibriumY);
-  for (const [x, dir] of [[0, 1], [CONFIG.canvas.width, -1]]) {
-    artLine(ctx, [[x + dir * 23, 453], [x + dir * 31, 461], [x + dir * 23, 469]], ART.colors.marking, 2);
-  }
-  artText(ctx, 'PIT', CONFIG.bumper.leftX, 480, 12, C.steel);
-  artText(ctx, 'PIT', CONFIG.bumper.rightX, 480, 12, C.steel);
-  artBumpers(ctx, s);
-  artNet(ctx, s);
+function drawArena(ctx, s) {
+  const bounds = netBounds(s)
+  ctx.fillStyle = ART.colors.pit
+  ctx.fillRect(0, CONFIG.trampoline.equilibriumY + 28, bounds.left - 28, CONFIG.canvas.height)
+  ctx.fillRect(bounds.right + 28, CONFIG.trampoline.equilibriumY + 28, CONFIG.canvas.width - bounds.right - 28, CONFIG.canvas.height)
+  drawBumpers(ctx, s)
+  drawNet(ctx, s)
 }
-function artAthlete(ctx, p, s, options = {
-}) {
-  const C = CONFIG.colors,
-  A = ART.player,
-  h = CONFIG.player.height;
-  const x = options.x ?? p.x,
-  footY = options.footY ?? p.y + h,
-  scale = options.scale ?? 1;
-  const age = s.rallyTicks - p.lastLandingTick;
-  let sx = 1,
-  sy = 1;
-  if (!s.reducedMotion && age >= 0 && age < CONFIG.presentation.squashTicks) {
-    const amount = 1 - age / CONFIG.presentation.squashTicks;
-    sx += A.squashWidth * amount;
-    sy -= A.squashHeight * amount;
-  } else if (!s.reducedMotion && Math.abs(p.vy) > CONFIG.bounce.baseImpulse) {
-    sx -= A.stretch;
-    sy += A.stretch;
+function drawPlayer(ctx, p, s, options = {}) {
+  const A = ART.player
+  const C = CONFIG.colors
+  const color = playerColor(p.id)
+  const x = options.x ?? p.x
+  const footY = options.footY ?? p.y + CONFIG.player.height
+  const scale = options.scale ?? 1
+  const direction = options.facing ?? p.facing ?? (p.id ? -1 : 1)
+  const speed = clamp(p.vx / CONFIG.player.maxVx, -1, 1)
+  const rise = clamp(-p.vy / CONFIG.player.maxFallVy, 0, 1)
+  const fall = clamp(p.vy / CONFIG.player.maxFallVy, 0, 1)
+  const bounceAge = s.rallyTicks - (p.lastBounceTick ?? p.lastLandingTick)
+  const saveAge = s.rallyTicks - p.lastSaveTick
+  const hitAge = s.rallyTicks - (p.lastHitTick ?? NEVER)
+  const perfectAge = s.rallyTicks - (p.lastPerfectTick ?? NEVER)
+  const stompAge = s.rallyTicks - p.lastStompTick
+  const hurt = hitAge >= 0 && hitAge < A.expressionTicks
+  const proud = options.winning || perfectAge >= 0 && perfectAge < A.expressionTicks
+  const save = saveAge >= 0 && saveAge < A.expressionTicks
+  const rebound = bounceAge >= 0 && bounceAge < CONFIG.presentation.squashTicks
+  let sx = 1
+  let sy = 1
+  if (!s.reducedMotion) {
+    if (p.compression) {
+      const amount = .55 + .45 * Math.sin(Math.PI * (1 - p.compression.remaining / p.compression.duration) / 2)
+      sx += A.squashWidth * amount
+      sy -= A.squashHeight * amount
+    } else {
+      const stretch = Math.max(rise * .55, fall * (p.diving ? 1 : .4), save ? .8 : 0)
+      sx -= A.stretch * stretch
+      sy += A.stretch * stretch
+      if (rebound) {
+        const amount = 1 - bounceAge / CONFIG.presentation.squashTicks
+        sx -= A.stretch * amount
+        sy += A.stretch * amount
+      }
+      if (hurt || stompAge >= 0 && stompAge < 4) {
+        sx += A.squashWidth * .5
+        sy -= A.squashHeight * .5
+      }
+    }
   }
-  const direction = p.facing || (p.id === 0 ? 1 : -1);
-  ctx.save();
-  ctx.translate(x, footY);
-  ctx.scale(scale * sx, scale * sy);
-  if (!s.reducedMotion) ctx.rotate(clamp(p.vx / CONFIG.player.maxVx, -1, 1) * A.lean);
+  const arm = options.winning ? -16 : p.diving ? -6 : rise * -A.armSwing + fall * A.armSwing
+  const leg = options.winning ? 1 : Math.abs(speed) * A.footSwing
+  ctx.save()
+  ctx.translate(x, footY)
+  ctx.scale(scale * sx, scale * sy)
+  if (!s.reducedMotion) ctx.rotate(speed * A.lean + (hurt ? direction * .12 : 0))
   if (p.protection > 0) {
-    ctx.save();
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = C.ivory;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(0, -h / 2, A.protectionRadius, A.protectionRadius + 3, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    ctx.save()
+    ctx.globalAlpha = .6
+    line(ctx, [[-18, -30], [-20, -20], [-18, -10]], C.ivory, 1.2)
+    line(ctx, [[18, -30], [20, -20], [18, -10]], C.ivory, 1.2)
+    ctx.restore()
   }
-  // Hands, singlet, shorts and sneakers remain compact around the 28x40 collider.
-  artLine(ctx, [[-8, -24], [-13, -13], [-10, -9]], artPlayerColor(p.id), 4);
-  artLine(ctx, [[8, -24], [13, -13], [10, -9]], artPlayerColor(p.id), 4);
-  artPolygon(ctx, [[-8,-25],[8,-25],[10,-12],[6,-7],[-6,-7],[-10,-12]], artPlayerColor(p.id));
-  artLine(ctx, [[-7,-10],[7,-10]], C.deep, 2);
-  artLine(ctx, [[-5,-7],[-6,-1],[-11,-1]], C.ivory, 4);
-  artLine(ctx, [[5,-7],[6,-1],[11,-1]], C.ivory, 4);
+  line(ctx, [[-8, -23], [-13, -18 + arm], [-13 + direction * 2, -14 + arm]], color, 4)
+  line(ctx, [[8, -23], [13, -18 + arm], [13 + direction * 2, -14 + arm]], color, 4)
+  dot(ctx, -13 + direction * 2, -14 + arm, 2.2, C.ivory)
+  dot(ctx, 13 + direction * 2, -14 + arm, 2.2, C.ivory)
   if (p.id === 0) {
-    artPolygon(ctx, [[-10,-36],[-5,-40],[6,-39],[10,-32],[8,-25],[-7,-25]], C.ivory);
-    artPolygon(ctx, [[-11,-35],[-7,-42],[-3,-39],[1,-44],[8,-38],[10,-34]], artPlayerColor(p.id));
-    artLine(ctx, [[-9,-33],[9,-33]], artPlayerColor(p.id), 3);
-    artPolygon(ctx, [[-9,-33],[-16,-30],[-12,-36]], artPlayerColor(p.id));
+    shape(ctx, [[-8, -25], [7, -25], [10, -11], [5, -7], [-6, -7], [-9, -12]], color)
+    line(ctx, [[-5, -8], [-6 - leg, -2], [-10 - leg, -1]], C.ivory, 4)
+    line(ctx, [[5, -8], [6 + leg, -3], [10 + leg, -2]], C.ivory, 4)
+    shape(ctx, [[-9, -37], [-5, -41], [6, -40], [10, -35], [8, -26], [-7, -26]], C.ivory)
+    shape(ctx, [[-10, -37], [-8, -42], [-3, -41], [1, -44], [8, -40], [10, -36]], color)
+    line(ctx, [[-9, -35], [9, -35]], color, 3)
+    shape(ctx, [[-9, -35], [-16 - speed * 2, -31], [-12, -37]], color)
+    line(ctx, [[-7, -13], [8, -13]], C.ink, 2)
+    shape(ctx, [[-1, -24], [4, -24], [0, -19], [-4, -19]], C.ivory)
   } else {
-    artCircle(ctx, 0, -32, 10, C.ivory);
-    artPolygon(ctx, [[-9,-35],[8,-35],[10,-31],[7,-28],[-9,-28]], artPlayerColor(p.id));
-    artLine(ctx, [[-5,-40],[-8,-45],[-4,-47]], artPlayerColor(p.id), 2);
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.ellipse(0, -17, 9, 11, 0, 0, Math.PI * 2)
+    ctx.fill()
+    line(ctx, [[-5, -8], [-6 - leg, -2], [-10 - leg, -2]], C.ivory, 4)
+    line(ctx, [[5, -8], [6 + leg, -1], [10 + leg, -1]], C.ivory, 4)
+    ctx.fillStyle = C.ivory
+    ctx.beginPath()
+    ctx.ellipse(0, -32.5, 10, 10.5, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.ellipse(-1, -37, 11, 6, -.1, Math.PI, Math.PI * 2)
+    ctx.lineTo(10, -35)
+    ctx.lineTo(-12, -35)
+    ctx.closePath()
+    ctx.fill()
+    line(ctx, [[-11, -35], [12, -35]], color, 3)
+    dot(ctx, -4, -43, 2.5, color)
+    line(ctx, [[-7, -12], [7, -12]], C.ink, 2)
+    dot(ctx, 0, -21, 2.5, C.ivory)
   }
-  const eyeX = direction * 3;
-  artCircle(ctx, eyeX - 3, -31, A.eyeSize / 2, C.deep);
-  artCircle(ctx, eyeX + 2, -31, A.eyeSize / 2, C.deep);
-  if (p.diving) artLine(ctx, [[eyeX-5,-35],[eyeX+4,-33]], C.deep, 1);
-  if (s.rallyTicks - p.lastSaveTick < CONFIG.presentation.eventTicks) artCircle(ctx, eyeX, -26.5, 1.5, C.deep, true, .8);
-  else artLine(ctx, [[eyeX-2,-26],[eyeX+2,-26]], C.deep, 1);
-  ctx.restore();
-}
-function artLandingCue(ctx, s, p) {
-  if (!landingSoon(s, p)) return;
-  const y = sampleNetAt(s, p.x).y;
-  ctx.save();
-  ctx.setLineDash([3, 3]);
-  artLine(ctx, [[p.x - 23, y - 6], [p.x + 23, y - 6]], CONFIG.colors.gold, 1.5);
-  ctx.restore();
-  artText(ctx, p.id === 0 ? 'W' : '↑', p.x, y + 31, 15, CONFIG.colors.gold, 'center', 900);
-}
-function artTrails(ctx, s, p) {
-  if (s.reducedMotion || (!p.diving && s.rallyTicks - p.lastSaveTick >= CONFIG.presentation.trailTicks)) return;
-  ctx.save();
-  ctx.globalAlpha = .28;
-  for (let i = 1; i <= ART.player.maxTrail; i++) {
-    const x = p.x - p.vx * i,
-    y = p.y - p.vy * i;
-    artLine(ctx, [[x - 8, y + 13], [x - 8 - p.vx * .8, y + 13 - p.vy * .8]], artPlayerColor(p.id), ART.player.trailWidth);
+  const eye = direction * 2
+  if (hurt) {
+    for (const x of [eye - 3, eye + 3]) line(ctx, [[x - 1, -32], [x + 1, -30], [x - 1, -28]], C.ink, 1)
+  } else if (proud) {
+    for (const x of [eye - 3, eye + 3]) line(ctx, [[x - 1, -30], [x, -31], [x + 1, -30]], C.ink, 1)
+  } else {
+    dot(ctx, eye - 3, -31, A.eyeSize, C.ink)
+    dot(ctx, eye + 3, -31, A.eyeSize, C.ink)
+    if (p.diving) line(ctx, [[eye - 5, -34], [eye + 4, -33]], C.ink, 1)
   }
-  ctx.restore();
-}
-function artEdgeMarker(ctx, p) {
-  if (p.x >= 0 && p.x <= CONFIG.canvas.width) return;
-  const left = p.x < 0,
-  x = left ? 12 : CONFIG.canvas.width - 12,
-  dir = left ? -1 : 1,
-  y = clamp(p.y + CONFIG.player.height / 2, 145, 480);
-  artPolygon(ctx, [[x + dir * 6, y], [x - dir * 3, y - 5], [x - dir * 3, y + 5]], artPlayerColor(p.id));
-  artText(ctx, String(p.id + 1), x - dir * 13, y + 4, 12, CONFIG.colors.ivory);
-}
-function artEffect(ctx, s, e) {
-  const C = CONFIG.colors,
-  age = s.totalTicks - e.tick,
-  duration = CONFIG.presentation.eventTicks;
-  if (age < 0 || age >= duration) return;
-  const progress = age / duration;
-  const alpha = progress < ART.effect.fadeStart ? 1 : (1 - progress) / (1 - ART.effect.fadeStart);
-  const rise = s.reducedMotion ? 0 : progress * ART.effect.rise;
-  const color = e.id === 0 || e.id === 1 ? artPlayerColor(e.id) : C.gold;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  if (e.type === 'PERFECT') {
-    artText(ctx, 'PERFECT', clamp(e.x, 76, 884), e.y - 64 - rise, ART.effect.perfectSize, C.gold, 'center', 900);
-  } else if (e.type === 'STOMP' || e.type === 'SNAPBACK') {
-    const save = e.type === 'SNAPBACK';
-    const x = clamp(e.x + (e.direction || 1) * (save ? 67 : 36), 90, 870);
-    const y = clamp(e.y - 25 - rise, 145, 458);
-    artText(ctx, save ? 'SNAPBACK!' : 'STOMP!', x, y, save ? ART.effect.saveSize : ART.effect.stompSize, save ? C.gold : color, 'center', 900);
-    if (!s.reducedMotion && age < ART.effect.impactTicks) {
-      const r = ART.effect.starRadius * (1 - age / ART.effect.impactTicks);
-      for (let i = 0; i < 4; i++) {
-        const angle = Math.PI * i / 2 + Math.PI / 4;
-        artLine(ctx, [[e.x + Math.cos(angle) * r, e.y + Math.sin(angle) * r], [e.x + Math.cos(angle) * (r + 5), e.y + Math.sin(angle) * (r + 5)]], color, 2);
-      }
-    }
-  } else if (e.type === 'WARNING' || e.type === 'OVERDRIVE') {
-    artText(ctx, e.type === 'WARNING' ? 'NET NARROWS SOON' : 'OVERDRIVE', ART.centerX, 148, e.type === 'WARNING' ? 16 : 24, C.gold, 'center', 900);
-  } else if (e.type === 'BOUNCE' && !s.reducedMotion && age < ART.effect.impactTicks) {
-    const r = 5 + age * 1.2;
-    artLine(ctx, [[e.x-r, e.y-4], [e.x-r-5, e.y-8]], color, 1.5);
-    artLine(ctx, [[e.x+r, e.y-4], [e.x+r+5, e.y-8]], color, 1.5);
+  if (save) {
+    ctx.strokeStyle = C.ink
+    ctx.lineWidth = .9
+    ctx.beginPath()
+    ctx.ellipse(eye, -26.5, 1.4, 1.8, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  } else if (proud) line(ctx, [[eye - 2, -27], [eye, -26], [eye + 2, -27]], C.ink, 1)
+  else line(ctx, [[eye - 1.5, -27], [eye + 1.5, -27]], C.ink, 1)
+  if (p.recoveryCharge) {
+    dot(ctx, -direction * 7, -12, A.chargeSize, C.gold)
+    dot(ctx, -direction * 7, -12, 1, C.ink)
   }
-  ctx.restore();
+  ctx.restore()
 }
-function artShake(s) {
-  if (s.reducedMotion || s.phase !== 'RALLY') return [0, 0];
-  let magnitude = 0;
+function drawTrails(ctx, s, p) {
+  if (s.reducedMotion) return
+  const A = ART.player
+  const save = s.rallyTicks - p.lastSaveTick < A.trailTicks
+  if (!save && !(p.diving && p.vy > A.trailSpeed) && Math.abs(p.vx) < A.trailSpeed) return
+  ctx.save()
+  ctx.globalAlpha = A.trailOpacity
+  for (const offset of [-7, 7]) {
+    const x = p.x - p.vx * .8 + offset
+    const y = p.y + 20 - p.vy * .8
+    line(ctx, [[x, y], [x - p.vx * A.trailLength, y - p.vy * A.trailLength]], playerColor(p.id), 2)
+  }
+  ctx.restore()
+}
+function drawEffects(ctx, s) {
+  if (s.reducedMotion) return
+  const A = ART.effect
   for (const e of s.effects) {
-    const age = s.totalTicks - e.tick;
-    if (age < 0 || age >= CONFIG.presentation.shakeTicks) continue;
-    const amount = e.type === 'STOMP' ? CONFIG.presentation.stompShakePx : e.type === 'SNAPBACK' ? CONFIG.presentation.saveShakePx : 0;
-    magnitude = Math.max(magnitude, amount * (1 - age / CONFIG.presentation.shakeTicks));
+    const age = s.totalTicks - e.tick
+    const duration = e.type === 'RELEASE' || e.type === 'BOUNCE' || e.type === 'PERFECT' ? A.bounceTicks : A.impactTicks
+    if (age < 0 || age >= duration) continue
+    const t = age / duration
+    const color = e.id === 0 || e.id === 1 ? playerColor(e.id) : CONFIG.colors.gold
+    ctx.save()
+    ctx.globalAlpha = (1 - t) * .8
+    if (e.type === 'RELEASE' && e.perfect || e.type === 'PERFECT' && !s.players[e.id]?.compression) {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2 * (1 - t) + .5
+      ctx.beginPath()
+      ctx.ellipse(e.x, e.y - 2, 8 + A.ringRadius * t, 2 + A.ringHeight * t, 0, Math.PI, Math.PI * 2)
+      ctx.stroke()
+    } else if (e.type === 'STOMP') {
+      const r = A.impactRadius * (.3 + .7 * t)
+      for (const direction of [-1, 1]) {
+        line(ctx, [[e.x + direction * r * .5, e.y - r * .4], [e.x + direction * r, e.y - r * .7]], CONFIG.colors.ivory, 2.2)
+        line(ctx, [[e.x + direction * r * .6, e.y + r * .25], [e.x + direction * r, e.y + r * .5]], color, 2)
+      }
+    } else if (e.type === 'SNAPBACK') {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      const x = e.x - e.direction * (4 + t * 5)
+      ctx.ellipse(x, e.y + CONFIG.player.height / 2, 4 + t * 9, 9 + t * 15, 0, -Math.PI / 2, Math.PI / 2, e.direction < 0)
+      ctx.stroke()
+    }
+    ctx.restore()
   }
-  return [Math.sin(s.totalTicks * ART.effect.shakeX) * magnitude, Math.cos(s.totalTicks * ART.effect.shakeY) * magnitude * .5];
 }
-function artWordmark(ctx) {
-  const T = ART.title;
-  ctx.save();
-  ctx.translate(ART.centerX, T.wordY);
-  ctx.transform(1, 0, -.08, 1, 0, 0);
-  ctx.font = `900 ${T.wordSize}px Arial Black, Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = CONFIG.colors.ivory;
-  const word = 'SNAPBACK',
-  widths = Array.from(word, letter => ctx.measureText(letter).width),
-  total = widths.reduce((a,b) => a+b, 0),
-  scale = Math.min(1, T.wordWidth / total);
-  ctx.scale(scale, 1);
-  let x = -total / 2;
+function shake(s) {
+  if (s.reducedMotion || s.phase !== 'RALLY') return [0, 0]
+  let amount = 0
+  for (const e of s.effects) {
+    const age = s.totalTicks - e.tick
+    if (age < 0 || age >= CONFIG.presentation.shakeTicks) continue
+    const strength = e.type === 'STOMP' ? CONFIG.presentation.stompShakePx : e.type === 'SNAPBACK' ? CONFIG.presentation.saveShakePx : 0
+    amount = Math.max(amount, strength * (1 - age / CONFIG.presentation.shakeTicks))
+  }
+  return [Math.sin(s.totalTicks * ART.effect.shakeX) * amount, Math.cos(s.totalTicks * ART.effect.shakeY) * amount * .45]
+}
+function wordmark(ctx) {
+  const T = ART.title
+  const glyphs = {
+    S: [[[8, 0], [47, 0], [47, 14], [16, 14], [16, 27], [40, 27], [48, 35], [48, 62], [40, 70], [0, 70], [0, 56], [32, 56], [32, 42], [8, 42], [0, 34], [0, 8]]],
+    N: [[[0, 70], [0, 0], [15, 0], [32, 38], [32, 0], [48, 0], [48, 70], [33, 70], [16, 32], [16, 70]]],
+    A: [[[0, 70], [10, 0], [38, 0], [48, 70], [32, 70], [30, 49], [18, 49], [16, 70]], [[20, 35], [28, 35], [25, 14], [23, 14]]],
+    P: [[[0, 70], [0, 0], [40, 0], [48, 8], [48, 37], [40, 45], [16, 45], [16, 70]], [[16, 14], [16, 31], [32, 31], [32, 14]]],
+    B: [[[0, 70], [0, 0], [39, 0], [47, 8], [47, 27], [40, 35], [48, 42], [48, 62], [40, 70]], [[16, 14], [16, 28], [31, 28], [31, 14]], [[16, 42], [16, 56], [32, 56], [32, 42]]],
+    C: [[[8, 0], [48, 0], [48, 15], [16, 15], [16, 55], [48, 55], [48, 70], [8, 70], [0, 62], [0, 8]]],
+    K: [[[0, 70], [0, 0], [16, 0], [16, 28], [32, 0], [50, 0], [30, 35], [50, 70], [32, 70], [16, 42], [16, 70]]]
+  }
+  const word = 'SNAPBACK'
+  ctx.save()
+  ctx.translate(ART.centerX, T.wordY)
+  ctx.scale(T.wordScale, T.wordScale)
+  ctx.transform(1, 0, -.07, 1, 0, 0)
+  ctx.translate(-(word.length * (T.letterWidth + T.letterGap) - T.letterGap) / 2, 0)
+  ctx.fillStyle = CONFIG.colors.ivory
   Array.from(word).forEach((letter, i) => {
-    ctx.fillText(letter, x, Math.sin(Math.PI * i / (word.length - 1)) * T.wordBend); x += widths[i];
-  });
-  ctx.restore();
-  artLine(ctx, [[160,T.underlineY],[ART.centerX,T.underlineY+9],[800,T.underlineY]], CONFIG.colors.gold, 3);
+    ctx.save()
+    ctx.translate(i * (T.letterWidth + T.letterGap), 0)
+    ctx.beginPath()
+    for (const contour of glyphs[letter]) {
+      contour.forEach((p, j) => j ? ctx.lineTo(...p) : ctx.moveTo(...p))
+      ctx.closePath()
+    }
+    ctx.fill('evenodd')
+    ctx.restore()
+  })
+  ctx.restore()
 }
-function artTitle(ctx, s, time) {
-  const C = CONFIG.colors,
-  T = ART.title;
-  artText(ctx, 'LOCAL TWO-PLAYER ARCADE', ART.centerX, T.labelY, 12, C.gold);
-  artWordmark(ctx);
-  artText(ctx, 'Every fall is a chance for a comeback.', ART.centerX, T.taglineY, 18, C.ivory, 'center', 500);
-  const points = [];
-  for (let i = 0; i <= CONFIG.trampoline.samples; i++) {
-    const x = mix(T.netLeft, T.netRight, i / CONFIG.trampoline.samples),
-    wave = s.reducedMotion ? 0 : Math.sin(time * T.hopSpeed * 2 - i * .35) * 2;
-    points.push([x, T.netY + Math.sin(Math.PI * i / CONFIG.trampoline.samples) * (4 + wave)]);
+function drawTitle(ctx, s, time) {
+  const T = ART.title
+  wordmark(ctx)
+  const phase = s.reducedMotion ? .7 : time * T.hopSpeed
+  const points = []
+  for (const i of Array.from({ length: CONFIG.trampoline.samples + 1 }).keys()) {
+    const u = i / CONFIG.trampoline.samples
+    const wave = s.reducedMotion ? 0 : Math.sin(phase * 2 - u * 8) * 2
+    points.push([mix(T.netLeft, T.netRight, u), T.netY + Math.sin(Math.PI * u) * (3 + wave)])
   }
-  artLine(ctx, points, C.gold, 3);
-  for (const x of [T.netLeft, T.netRight]) artLine(ctx, [[x,T.netY],[x,T.netY+12]], C.gold, 3);
-  s.players.forEach((p, i) => {
-    const hop = s.reducedMotion ? 0 : Math.abs(Math.sin(time * T.hopSpeed + i * Math.PI / 2)) * T.hopHeight; artAthlete(ctx, p, s, {
-      x:T.athleteX[i],
-      footY:T.netY-hop,
-      scale:T.athleteScale
-    }); artText(ctx, `${i+1} / ${artPlayerName(i)}`, T.athleteX[i], T.nameY, 23, artPlayerColor(i), 'center', 900); artText(ctx, i === 0 ? 'A / D   MOVE' : '← / →   MOVE', T.athleteX[i], T.moveY, 16, C.ivory); artText(ctx, i === 0 ? 'W  TIME / SAVE     S  DIVE' : '↑  TIME / SAVE     ↓  DIVE', T.athleteX[i], T.actionY, 15, C.ivory);
-  });
-  artText(ctx, 'STOMP YOUR RIVAL INTO A PIT. FIRST TO THREE.', ART.centerX, 448, 12, C.gold);
-  artText(ctx, 'SPACE / ENTER — PLAY', ART.centerX, T.playY, 28, C.ivory, 'center', 900);
+  line(ctx, points.map(p => [p[0], p[1] + ART.net.meshDepth]), ART.colors.mesh)
+  line(ctx, points, CONFIG.colors.gold, ART.net.cordWidth)
+  for (const [x, direction] of [[T.netLeft, 1], [T.netRight, -1]]) {
+    line(ctx, [[x, T.netY], [x - direction * 7, T.netY + 24], [x + direction * 9, T.netY + 24]], CONFIG.colors.gold, 3)
+  }
+  for (const p of s.players) {
+    const offset = phase + p.id * 1.5
+    const hop = Math.abs(Math.sin(offset)) * T.hopHeight
+    const pose = { ...p, vx: Math.cos(offset) * 1.4, vy: -Math.cos(offset) * 8, diving: false, protection: 0 }
+    drawPlayer(ctx, pose, s, { x: T.playerX[p.id] + Math.sin(offset) * 12, footY: T.netY - hop, scale: T.playerScale })
+  }
+  drawText(ctx, 'Space to play', ART.centerX, T.promptY, T.promptSize, CONFIG.colors.ivory, 500)
 }
-function artPause(ctx, s) {
-  const O = ART.overlay,
-  C = CONFIG.colors;
-  ctx.fillStyle = C.ink;
-  ctx.fillRect(0, O.top, CONFIG.canvas.width, O.bottom - O.top);
-  artText(ctx, 'TIME OUT', ART.centerX, O.titleY, 78, C.ivory, 'center', 900);
-  artText(ctx, 'ESC — RESUME', ART.centerX, O.actionY, 27, C.gold, 'center', 900);
-  artText(ctx, 'CORAL', 255, O.controlsY, 20, C.coral);
-  artText(ctx, 'MINT', 705, O.controlsY, 20, C.mint);
-  artText(ctx, 'A D MOVE · W TIME / SAVE · S DIVE', 255, O.controlsY+30, 14, C.ivory);
-  artText(ctx, '← → MOVE · ↑ TIME / SAVE · ↓ DIVE', 705, O.controlsY+30, 14, C.ivory);
-  artText(ctx, 'One timed save per player, per rally.', ART.centerX, 408, 17, C.ivory, 'center', 500);
-  artText(ctx, `M · SOUND ${s.muted ? 'OFF' : 'ON'}     /     V · MOTION ${s.reducedMotion ? 'REDUCED' : 'FULL'}`, ART.centerX, O.settingsY, 14, C.gold);
+function drawPause(ctx, s) {
+  const A = ART.pause
+  drawScore(ctx, s)
+  drawText(ctx, 'Paused', ART.centerX, A.titleY, A.titleSize, CONFIG.colors.ivory, 800)
+  drawText(ctx, 'Esc to resume', ART.centerX, A.promptY, 16, ART.colors.dim, 500)
+  drawText(ctx, 'A / D   move     W   bounce     S   dive', ART.centerX, A.controlsY, 15, CONFIG.colors.coral, 500)
+  drawText(ctx, '← / →   move     ↑   bounce     ↓   dive', ART.centerX, A.controlsY + 31, 15, CONFIG.colors.mint, 500)
 }
-function artPoint(ctx, s) {
-  const draw = s.pendingPoint === null,
-  color = draw ? CONFIG.colors.gold : artPlayerColor(s.pendingPoint);
-  ctx.fillStyle = CONFIG.colors.ink;
-  ctx.fillRect(190, 137, 580, 104);
-  artLine(ctx, [[210,143],[750,143]], color, 2);
-  artText(ctx, draw ? 'DOUBLE OUT' : `${artPlayerName(s.pendingPoint)} POINT`, ART.centerX, 199, 48, color, 'center', 900);
-  artText(ctx, draw ? 'NO POINT. BACK ON THE NET.' : 'BACK ON THE NET.', ART.centerX, 225, 13, CONFIG.colors.ivory);
+function drawWinner(ctx, s, time) {
+  const W = ART.winner
+  const p = s.players[s.winner ?? 0]
+  const hop = s.reducedMotion ? 0 : Math.abs(Math.sin(time * W.hopSpeed)) * W.hopHeight
+  const pose = { ...p, vx: 0, vy: 0, protection: 0, diving: false, compression: null }
+  drawPlayer(ctx, pose, s, { x: ART.centerX, footY: W.footY - hop, scale: W.scale, facing: 1, winning: true })
+  drawScore(ctx, s, W.scoreY, W.scoreSize)
+  drawText(ctx, 'Space to rematch', ART.centerX, W.promptY, ART.title.promptSize, CONFIG.colors.ivory, 500)
 }
-function artWinner(ctx, s) {
-  const C = CONFIG.colors,
-  color = artPlayerColor(s.winner),
-  p = s.players[s.winner];
-  ctx.fillStyle = C.ink;
-  ctx.fillRect(0, ART.overlay.top, CONFIG.canvas.width, ART.overlay.bottom - ART.overlay.top);
-  artText(ctx, 'MATCH', ART.centerX, 154, 12, C.gold);
-  artText(ctx, `${artPlayerName(s.winner)} WINS`, ART.centerX, 230, 76, color, 'center', 900);
-  artAthlete(ctx, p, s, {
-    x:ART.centerX,
-    footY:341,
-    scale:1.8
-  });
-  artText(ctx, 'RUN IT BACK.', ART.centerX, 387, 23, C.ivory, 'center', 900);
-  artText(ctx, 'SPACE / ENTER — REMATCH', ART.centerX, 443, 26, C.gold, 'center', 900);
-}
-function drawGame(ctx, s, time) {
-  ctx.save();
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  artBackdrop(ctx);
-  if (s.phase === 'TITLE') artTitle(ctx, s, time);
+function drawGame(ctx, s, time, alpha = 1) {
+  ctx.save()
+  ctx.lineJoin = 'round'
+  ctx.lineCap = 'round'
+  backdrop(ctx)
+  if (s.phase === 'TITLE') drawTitle(ctx, s, time)
+  else if (s.phase === 'PAUSED') drawPause(ctx, s)
+  else if (s.phase === 'MATCH_OVER') drawWinner(ctx, s, time)
   else {
-    artHud(ctx, s);
-    const shake = artShake(s);
-    ctx.save();
-    ctx.translate(...shake);
-    if (s.phase === 'RALLY' || s.phase === 'POINT_FREEZE') artArena(ctx, s);
-    if (s.phase === 'RALLY') for (const p of s.players) {
-      artLandingCue(ctx, s, p);
-      artTrails(ctx, s, p);
-      artAthlete(ctx, p, s);
-      artEdgeMarker(ctx, p);
+    ctx.save()
+    ctx.translate(...shake(s))
+    const blend = s.phase === 'RALLY' ? clamp(alpha, 0, 1) : 1
+    const view = { ...s,
+      players: s.players.map(p => ({ ...p, x: mix(p.prevX, p.x, blend), y: mix(p.prevY, p.y, blend) })),
+      net: { ...s.net, d: s.net.d.map((d, i) => mix(s.net.previous[i], d, blend)) }
     }
-    if (s.phase === 'RALLY') for (const e of s.effects) artEffect(ctx, s, e);
-    ctx.restore();
-    if (s.phase === 'PAUSED') artPause(ctx, s);
-    else if (s.phase === 'MATCH_OVER') artWinner(ctx, s);
-    else if (s.phase === 'POINT_FREEZE') artPoint(ctx, s);
-    else if (s.rallyIndex === 1 && s.rallyTicks < CONFIG.presentation.helpTicks) {
-      artText(ctx, 'TIME THE LANDING. TAKE THE HIGH GROUND.', ART.centerX, 474, 15, CONFIG.colors.ivory);
-      artText(ctx, 'Tap W / ↑ just before landing. Dive from above.', ART.centerX, 492, 12, ART.colors.dimPaper, 'center', 500);
+    drawArena(ctx, view)
+    for (const p of view.players) {
+      drawTrails(ctx, view, p)
+      const winning = s.phase === 'POINT_FREEZE' && p.id === s.pendingPoint
+      drawPlayer(ctx, p, view, { winning })
     }
+    drawEffects(ctx, s)
+    ctx.restore()
+    drawScore(ctx, s)
   }
-  artText(ctx, 'ESC PAUSE   /   M SOUND   /   V MOTION', ART.margin, ART.footerY, 11, ART.colors.dimPaper, 'left', 600);
-  ctx.restore();
+  ctx.restore()
 }
-// RENDERER_END
+
 // Short local synthesis. Failures and blocked audio never affect simulation.
 function createAudio(){
   let context=null,
@@ -1280,6 +1350,7 @@ function createAudio(){
   muted=false,
   paused=false;
   const voices=new Set();
+  const bounceCount=[0,0];
   function stop(){
     for(const voice of Array.from(voices)){
       try{
@@ -1315,7 +1386,7 @@ function createAudio(){
       master=null;
     }
   }
-  function note(frequency,duration,type,offset=0,endFrequency=frequency){
+  function note(frequency,duration,type,offset=0,endFrequency=frequency,volume=1){
     const c=CONFIG.audio;
     if(!context||context.state!=='running'||muted||paused||voices.size>=c.maxVoices)return;
     let oscillator=null,
@@ -1345,7 +1416,7 @@ function createAudio(){
       oscillator.frequency.setValueAtTime(frequency,start);
       oscillator.frequency.exponentialRampToValueAtTime(Math.max(1,endFrequency),start+duration);
       gain.gain.setValueAtTime(c.floorGain,start);
-      gain.gain.exponentialRampToValueAtTime(c.peakGain,start+c.attackSeconds);
+      gain.gain.exponentialRampToValueAtTime(c.peakGain*volume,start+c.attackSeconds);
       gain.gain.exponentialRampToValueAtTime(c.floorGain,start+duration);
       oscillator.connect(gain);
       gain.connect(master);
@@ -1368,11 +1439,16 @@ function createAudio(){
     }
   }
   function phrase(cue){
-    cue.notes.forEach((frequency,i)=>note(frequency,cue.seconds,cue.wave,(cue.spacing||0)*i,cue.ends?cue.ends[i]:frequency));
+    cue.notes.forEach((frequency,i)=>note(frequency,cue.seconds,cue.wave,(cue.spacing||0)*i,cue.ends?cue.ends[i]:frequency,cue.volume??1));
   }
   function event(e){
     const a=CONFIG.audio;
-    if(e.type==='BOUNCE')note(a.bounce.baseHz+e.tier*a.bounce.tierHz,a.bounce.seconds,a.bounce.wave,0,a.bounce.endHz);
+    if(e.type==='BOUNCE'){
+      const cue=a.bounce
+      const id=e.id??0
+      const pitch=cue.variations[bounceCount[id]++%cue.variations.length]
+      note((cue.baseHz+e.tier*cue.tierHz)*pitch,cue.seconds,cue.wave,0,cue.endHz*pitch,cue.volume)
+    }
     const cue={
       PERFECT:a.perfect,
       STOMP:a.stomp,
@@ -1417,6 +1493,7 @@ function boot(){
   function announce(){
     if(lastPhase===s.phase)return;
     lastPhase=s.phase;
+    syncSettings();
     const name=s.winner===0?'Coral':'Mint';
     status.textContent=s.phase==='MATCH_OVER'?name+' wins. Space or Enter to rematch.':s.phase==='PAUSED'?'Paused. Escape to resume.':s.phase==='RALLY'?'Match in play. First to three.':s.phase==='POINT_FREEZE'?'Point. Next rally starts automatically.':'Snapback. Space to play.';
   }
@@ -1428,6 +1505,7 @@ function boot(){
   function syncSettings(){
     const sound=document.getElementById('sound'),
     motion=document.getElementById('motion');
+    document.getElementById('controls').hidden=s.phase!=='PAUSED';
     sound.textContent='M · Sound '+(s.muted?'off':'on');
     sound.setAttribute('aria-pressed',String(s.muted));
     motion.textContent='V · Motion '+(s.reducedMotion?'reduced':'full');
@@ -1438,6 +1516,7 @@ function boot(){
     setPaused(s,value);
     resetInputs();
     audio.setPaused(value||s.phase==='PAUSED');
+    if(s.phase!=='PAUSED')canvas.focus({preventScroll:true});
     announce();
   }
   function command(code,gesture=false){
@@ -1456,7 +1535,7 @@ function boot(){
       pause(s.phase!=='PAUSED');
       return;
     }
-    if((code==='Space'||code==='Enter')&&['TITLE','MATCH_OVER'].includes(s.phase)){
+    if(['Space','Enter','KeyW','ArrowUp'].includes(code)&&['TITLE','MATCH_OVER'].includes(s.phase)){
       startMatch(s);
       resetInputs();
       audio.setPaused(false);
@@ -1473,7 +1552,7 @@ function boot(){
     if(s.rallyIndex!==priorIndex)resetInputs();
     announce();
   }
-  const driver=createFrameDriver(update,()=>drawGame(ctx,s,performance.now()/1000));
+  const driver=createFrameDriver(update,alpha=>drawGame(ctx,s,performance.now()/1000,alpha));
   function resize(){
     const scale=Math.min(window.innerWidth/CONFIG.canvas.width,window.innerHeight/CONFIG.canvas.height);
     const dpr=Math.min(window.devicePixelRatio||1,CONFIG.canvas.maxDpr);
@@ -1481,8 +1560,9 @@ function boot(){
     canvas.style.height=CONFIG.canvas.height*scale+'px';
     canvas.width=Math.round(CONFIG.canvas.width*dpr);
     canvas.height=Math.round(CONFIG.canvas.height*dpr);
-    document.getElementById('controls').style.transform='scale('+Math.min(scale,1)+')';
-    document.getElementById('controls').style.transformOrigin='bottom right';
+    document.getElementById('controls').style.transform='translateX(-50%) scale('+Math.min(scale,1)+')';
+    document.getElementById('controls').style.transformOrigin='top center';
+    document.getElementById('controls').style.top=((window.innerHeight-CONFIG.canvas.height*scale)/2+CONFIG.art.pause.settingsY*scale)+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
     drawGame(ctx,s,0);
   }
@@ -1500,7 +1580,7 @@ function boot(){
   canvas.addEventListener('pointerdown',e=>{
     if(e.isTrusted)audio.unlock();canvas.focus({
       preventScroll:true
-    });if(s.phase==='TITLE')command('Space',e.isTrusted);
+    });if(['TITLE','MATCH_OVER'].includes(s.phase))command('Space',e.isTrusted);
   });
   function frame(time){
     driver.frame(time,['RALLY','POINT_FREEZE'].includes(s.phase));
@@ -1542,6 +1622,7 @@ if(testMode)globalThis.SnapbackTest={
   resolvePlayerContact,
   resolveBumperSave,
   resolveNetLandings,
+  updateCompression,
   findNetLanding,
   resolveRallyOutcome,
   stepSimulation,
