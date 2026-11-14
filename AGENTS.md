@@ -39,3 +39,17 @@ If requirements conflict, ask before changing the core loop/echo contract. Keep 
 
 ## Current phase
 Follow the current task prompt. Do NOT build the full game in one pass. Begin with docs/project skeleton and a tiny vertical slice, then expand milestone by milestone.
+
+## Autonomous Development
+
+When explicitly authorized through a Codex Goal,
+Codex may continue through the ordered milestones
+in docs/CODEX_PROMPTS.md.
+
+Implement and validate one milestone at a time.
+Maintain a progress log and save local Git checkpoints.
+Do not claim manual gameplay tests have passed.
+Pause if a blocker cannot be resolved safely.
+
+Never publish, push, or perform the final release
+without explicit approval.
