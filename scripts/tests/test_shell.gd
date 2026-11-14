@@ -5,7 +5,7 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
-	var app: Control = load("res://scenes/main.tscn").instantiate()
+	var app: Control = CampaignFixture.app()
 	root.add_child(app)
 	await process_frame
 	assert(app.current_route == "menu")

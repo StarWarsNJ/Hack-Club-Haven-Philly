@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/core/mission_definition.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/levels/m03.tscn" id="2"]
+[resource]
+script = ExtResource("1")
+mission_id = "M3"
+title = "Laser Waltz"
+objective = "Let E1 hold A, wait for cyan, then dash the long straights through the beam maze."
+world_scene = ExtResource("2")
+echo_budget = 1
+echo_capacity = 4
+dash_enabled = true
+hint_before_bank = "TICK: Tap Shift moving right, then head up to A. Hold to ~17s and bank. Dash never protects from beams."
+hint_after_bank = "TICK: Wait outside the field until cyan (~3s). Follow the serpentine path; tap Shift on each long straight."

@@ -9,7 +9,7 @@ const engine = configured.replace(/(?<!_console)\.exe$/i, '_console.exe');
 const logDir = join(root, '.godot/validation');
 mkdirSync(logDir, { recursive: true });
 const scripts = readdirSync(join(root, 'scripts/tests')).filter(s => /^test_.*\.gd$/.test(s)).sort();
-const checks = [['import', ['--import']], ['startup', ['--quit-after', '120']], ...scripts.map(s => [s, ['--script', 'res://scripts/tests/' + s]])];
+const checks = [['import', ['--import']], ['startup', ['--quit-after', '120']], ...scripts.map(s => [s, ['--fixed-fps', '60', '--script', 'res://scripts/tests/' + s]])];
 const knownHost = /Failed to read the root certificate store|Could not open 'user:\/\/' directory|Cannot open directory '\.\/Godot\/feature_profiles'/;
 const results = [];
 for (const [name, args] of checks) {
@@ -22,7 +22,7 @@ for (const [name, args] of checks) {
   results.push({ name, passed, exitCode: result.status, error: result.error?.message, hostDiagnostics, projectDiagnostics, output });
   console.log((passed ? 'PASS ' : 'FAIL ') + name + ' (exit ' + result.status + ', host diagnostics ' + hostDiagnostics.length + ')');
   for (const line of output.split(/\r?\n/).filter(s => s.startsWith('PASS '))) console.log('  ' + line);
-  if (!passed) console.log(output);
+  if (!passed) { console.log(output); console.log("Stopped at failed check; remaining checks were not run."); break; }
 }
 writeFileSync(join(logDir, 'results.json'), JSON.stringify(results, null, 2));
 const hostMessages = [...new Set(results.flatMap(r => r.hostDiagnostics))];

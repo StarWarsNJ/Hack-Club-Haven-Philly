@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=3 format=3]
+[ext_resource type="Script" path="res://scripts/core/mission_definition.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/levels/m02.tscn" id="2"]
+[resource]
+script = ExtResource("1")
+mission_id = "M2"
+title = "Crossed Signals"
+objective = "Hold A + B together for 1s, then cross during the gate's 5s grace."
+world_scene = ExtResource("2")
+echo_budget = 1
+echo_capacity = 4
+hint_before_bank = "TICK: Bank E1 holding A (upper left) through ~17s. Two switches. One you. For now."
+hint_after_bank = "TICK: Hold B until the SYNC gate opens, then leave B and cross within 5s. Tab shows tapes."
