@@ -1,3 +1,5 @@
+> Reference snapshot of the originally supplied Snapback specification kit. Current implementation and executed validation status are in README.md, docs/DEV_LOG.md, and docs/QA_REPORT.md; pending-status copies below are historical.
+
 # Snapback — ALL IN ONE specification
 
 This is a readable consolidation of every file in the full kit. Extract individual files from the ZIP if possible; otherwise copy the corresponding sections into your existing project.

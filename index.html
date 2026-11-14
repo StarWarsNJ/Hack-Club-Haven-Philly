@@ -1,0 +1,1555 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#151B20"><title>Snapback — One trampoline. Two rivals.</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0C1114;color:#F6EEDF;font-family:Arial,Helvetica,sans-serif}body,main{display:grid;place-items:center}main{width:100%;height:100%;position:relative}canvas{display:block;outline:none;touch-action:none}button{font:inherit;cursor:pointer}#controls{position:absolute;right:12px;bottom:8px;display:flex;gap:8px}button{border:1px solid #65727B;color:#F6EEDF;background:#151B20;padding:5px 9px;font-size:12px}button:focus-visible{outline:2px solid #EEDC96;outline-offset:2px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style></head>
+<body><main aria-label="Snapback two-player arcade game"><canvas id="game" width="960" height="540" tabindex="0" role="img" aria-label="Snapback. Coral: A D move, W timed bounce or save, S dive. Mint: arrows. Space or Enter to play, Escape pause, M sound, V reduced motion."></canvas><div id="controls"><button id="sound" type="button">M · Sound on</button><button id="motion" type="button">V · Reduce motion</button></div><p id="status" class="sr-only" aria-live="polite">Two players. One trampoline. Space or Enter to play.</p></main>
+<script>
+'use strict';
+const CONFIG = Object.freeze({
+  canvas:{
+    width:960,
+    height:540,
+    maxDpr:2
+  },
+  simulation:{
+    hz:60,
+    maxFrameMs:150,
+    maxSteps:9
+  },
+  player:{
+    width:28,
+    height:40,
+    gravity:.48,
+    airAccel:.48,
+    maxVx:5.8,
+    noInputDrag:.96,
+    diveGravityBonus:.32,
+    maxFallVy:19,
+    knockDrag:.985,
+    escapeControl:.65,
+    spawnX:[370,590],
+    spawnY:210,
+    ceilingY:-64
+  },
+  bounce:{
+    startTier:2,
+    minTier:1,
+    maxTier:5,
+    baseImpulse:8,
+    impulsePerTier:2,
+    perfectWindowTicks:12,
+    pressCooldownTicks:15,
+    netWaveGainMax:1.2
+  },
+  trampoline:{
+    left:180,
+    right:780,
+    equilibriumY:410,
+    samples:25,
+    maxDeflection:38,
+    maxVelocity:8,
+    spring:.035,
+    neighborCoupling:.11,
+    damping:.91,
+    impactStrength:2.4,
+    diveImpactMultiplier:1.5,
+    impactSpeedReference:10,
+    impactScaleMin:.6,
+    impactScaleMax:2
+  },
+  stomp:{
+    minRelativeFallSpeed:2.5,
+    horizontalBaseKnock:7,
+    horizontalSpeedScale:.25,
+    horizontalKnockMax:11,
+    defenderDownVy:3,
+    protectionTicks:16,
+    attackerBounceImpulse:13
+  },
+  collision:{
+    epsilon:.01,
+    topTolerance:1,
+    sideImpulse:1.8,
+    neutralRebound:5,
+    rootIterations:12,
+    sweepSamples:6
+  },
+  bumper:{
+    leftX:90,
+    rightX:870,
+    topY:270,
+    bottomY:435,
+    preContactTicks:12,
+    postContactGraceTicks:5,
+    inwardLaunchVx:9.5,
+    upwardLaunchVy:13,
+    softReboundVx:1.5,
+    rearmDistance:50,
+    promptDistance:90
+  },
+  overdrive:{
+    enabled:true,
+    beginSeconds:25,
+    warningSeconds:2,
+    shrinkSeconds:12,
+    maxInsetEachSide:70
+  },
+  scoring:{
+    pointsToWin:3,
+    pointPresentationSeconds:.6
+  },
+  presentation:{
+    eventTicks:32,
+    maxEffects:32,
+    stompShakePx:4,
+    saveShakePx:3,
+    shakeTicks:8,
+    helpTicks:360,
+    squashTicks:6,
+    trailTicks:7
+  },
+  audio:{
+    masterGain:.12,
+    maxVoices:20,
+    attackSeconds:.006,
+    floorGain:.001,
+    peakGain:.7,
+    releasePadding:.01,
+    bounce:{
+      baseHz:140,
+      tierHz:25,
+      seconds:.11,
+      endHz:85,
+      wave:'triangle'
+    },
+    perfect:{
+      notes:[300,450],
+      seconds:.14,
+      spacing:.06,
+      wave:'triangle'
+    },
+    stomp:{
+      notes:[100,65],
+      ends:[40,65],
+      seconds:.15,
+      wave:'triangle'
+    },
+    save:{
+      notes:[180,360],
+      ends:[720,540],
+      seconds:.25,
+      spacing:.08,
+      wave:'triangle'
+    },
+    point:{
+      notes:[330,440],
+      seconds:.16,
+      spacing:.07,
+      wave:'triangle'
+    },
+    victory:{
+      notes:[330,440,660],
+      seconds:.28,
+      spacing:.1,
+      wave:'triangle'
+    },
+    overdrive:{
+      notes:[110],
+      ends:[90],
+      seconds:.22,
+      wave:'square'
+    },
+    dive:{
+      notes:[240],
+      ends:[110],
+      seconds:.08,
+      wave:'sine',
+      cooldownTicks:18
+    }
+  },
+  colors:{
+    ink:'#151B20',
+    deep:'#0C1114',
+    ivory:'#F6EEDF',
+    coral:'#D86751',
+    mint:'#8DD0CF',
+    gold:'#EEDC96',
+    steel:'#65727B'
+  },
+  art: {
+    centerX: 480,
+    margin: 26,
+    frameTop: 112,
+    footerY: 521,
+    score: {
+      top: 18,
+      baseline: 73,
+      size: 66,
+      spread: 45,
+      playerLeft: 28,
+      playerRight: 932,
+      nameY: 29,
+      pipY: 54,
+      keysY: 88
+    },
+    title: {
+      labelY: 34,
+      wordY: 145,
+      wordSize: 106,
+      wordWidth: 704,
+      wordBend: 7,
+      underlineY: 170,
+      taglineY: 197,
+      netY: 326,
+      netLeft: 160,
+      netRight: 800,
+      athleteX: [255, 705],
+      athleteScale: 2,
+      hopHeight: 36,
+      hopSpeed: 1.9,
+      nameY: 366,
+      moveY: 395,
+      actionY: 419,
+      playY: 477
+    },
+    player: {
+      squashWidth: .22,
+      squashHeight: .18,
+      stretch: .08,
+      lean: .11,
+      eyeSize: 2.1,
+      protectionRadius: 23,
+      trailWidth: 2,
+      maxTrail: 3
+    },
+    net: {
+      cordWidth: 4,
+      highlightWidth: 1.25,
+      meshDepth: 13,
+      meshStride: 2,
+      postDepth: 30,
+      footHalf: 11,
+      stitchStep: 16
+    },
+    bumper: {
+      halfWidth: 7,
+      bracket: 13,
+      promptWidth: 92,
+      promptOffset: 42,
+      arrowOffset: 23
+    },
+    effect: {
+      perfectSize: 18,
+      stompSize: 24,
+      saveSize: 20,
+      rise: 9,
+      fadeStart: .65,
+      impactTicks: 9,
+      starRadius: 18,
+      shakeX: 2.8,
+      shakeY: 2.1
+    },
+    overlay: {
+      top: 117,
+      bottom: 474,
+      titleY: 221,
+      actionY: 272,
+      controlsY: 334,
+      settingsY: 443
+    },
+    colors: {
+      marking: '#293238',
+      mesh: '#756F4F',
+      dimPaper: '#B8B7AC'
+    }
+  }
+});
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const mix=(a,b,t)=>a+(b-a)*t;
+const sign=n=>n<0?-1:n>0?1:0;
+const NEVER=-1000000;
+const PLAYER_KEYS=[{
+  left:'KeyA',
+  right:'KeyD',
+  bounce:'KeyW',
+  dive:'KeyS'
+},{
+  left:'ArrowLeft',
+  right:'ArrowRight',
+  bounce:'ArrowUp',
+  dive:'ArrowDown'
+}];
+const GAME_KEYS=new Set(PLAYER_KEYS.flatMap(k=>Object.values(k)).concat(['Space','Enter','Escape','KeyM','KeyV']));
+// State uses center x / top y. Every rally replaces its complete transient state.
+function createPlayer(id){
+  return {
+    id,
+    x:CONFIG.player.spawnX[id],
+    y:CONFIG.player.spawnY,
+    vx:0,
+    vy:0,
+    prevX:CONFIG.player.spawnX[id],
+    prevY:CONFIG.player.spawnY,
+    tier:CONFIG.bounce.startTier,
+    recoveryCharge:1,
+    netPressTick:NEVER,
+    savePressTick:NEVER,
+    netPressReady:0,
+    protection:0,
+    contact:null,
+    bumperLatch:[false,false],
+    diving:false,
+    diveSoundReady:0,
+    lastLandingTick:NEVER,
+    lastSaveTick:NEVER,
+    lastStompTick:NEVER,
+    facing:id===0?1:-1
+  };
+}
+function createNet(){
+  return {
+    d:Array(CONFIG.trampoline.samples).fill(0),
+    v:Array(CONFIG.trampoline.samples).fill(0),
+    previous:Array(CONFIG.trampoline.samples).fill(0)
+  };
+}
+function createMatchState(){
+  return {
+    phase:'TITLE',
+    previousPhase:null,
+    totalTicks:0,
+    rallyTicks:0,
+    rallyIndex:0,
+    scores:[0,0],
+    winner:null,
+    pendingPoint:null,
+    pointTicks:0,
+    players:[createPlayer(0),createPlayer(1)],
+    net:createNet(),
+    overdriveInset:0,
+    events:[],
+    effects:[],
+    muted:false,
+    reducedMotion:false,
+    stats:{
+      bounces:[0,0],
+      perfect:[0,0],
+      stomps:[0,0],
+      saves:[0,0],
+      points:0,
+      draws:0
+    }
+  };
+}
+function resetRally(s){
+  s.players=[createPlayer(0),createPlayer(1)];
+  s.net=createNet();
+  s.rallyTicks=0;
+  s.overdriveInset=0;
+  s.pendingPoint=null;
+  s.pointTicks=0;
+  s.effects=[];
+  s.events=[];
+  s.rallyIndex++;
+  s.phase='RALLY';
+  s.previousPhase=null;
+}
+function startMatch(s){
+  s.scores=[0,0];
+  s.winner=null;
+  s.totalTicks=0;
+  s.rallyIndex=0;
+  s.stats={
+    bounces:[0,0],
+    perfect:[0,0],
+    stomps:[0,0],
+    saves:[0,0],
+    points:0,
+    draws:0
+  };
+  resetRally(s);
+}
+function setPaused(s,pause){
+  if(pause&&['RALLY','POINT_FREEZE'].includes(s.phase)){
+    s.previousPhase=s.phase;
+    s.phase='PAUSED';
+  }else if(!pause&&s.phase==='PAUSED'){
+    s.phase=s.previousPhase;
+    s.previousPhase=null;
+  }
+  clearPlayerPresses(s);
+}
+function clearPlayerPresses(s){
+  for(const p of s.players){
+    p.netPressTick=NEVER;
+    p.savePressTick=NEVER;
+  }
+}
+function emit(s,type,data={
+}){
+  const e=Object.assign({
+    type,
+    tick:s.totalTicks
+  },data);
+  s.events.push(e);
+  s.effects.push(e);
+  if(s.effects.length>CONFIG.presentation.maxEffects)s.effects.shift();
+}
+function netBounds(s){
+  return {
+    left:CONFIG.trampoline.left+s.overdriveInset,
+    right:CONFIG.trampoline.right-s.overdriveInset
+  };
+}
+function sampleNetAt(s,x,previous=false){
+  const b=netBounds(s),
+  u=clamp((x-b.left)/(b.right-b.left),0,1)*(CONFIG.trampoline.samples-1),
+  i=Math.min(Math.floor(u),CONFIG.trampoline.samples-2),
+  t=u-i,
+  a=previous?s.net.previous:s.net.d;
+  return {
+    y:CONFIG.trampoline.equilibriumY+mix(a[i],a[i+1],t),
+    vy:mix(s.net.v[i],s.net.v[i+1],t),
+    i,
+    t
+  };
+}
+// One shared, bounded spring mesh. Contacts read one snapshot before adding forces.
+function stepNet(s){
+  const n=s.net,
+  c=CONFIG.trampoline;
+  n.previous=n.d.slice();
+  const velocities=n.v.map((v,i)=>i===0||i===c.samples-1?0:clamp((v-c.spring*n.d[i]+c.neighborCoupling*(n.d[i-1]+n.d[i+1]-2*n.d[i]))*c.damping,-c.maxVelocity,c.maxVelocity));
+  for(let i=0;i<c.samples;i++){
+    n.v[i]=velocities[i];
+    const raw=n.d[i]+n.v[i];
+    n.d[i]=clamp(raw,-c.maxDeflection,c.maxDeflection);
+    if(raw!==n.d[i])n.v[i]=0;
+  }
+}
+function impactNet(s,x,strength){
+  const sample=sampleNetAt(s,x);
+  for(const [i,w] of [[sample.i,1-sample.t],[sample.i+1,sample.t]])if(i>0&&i<CONFIG.trampoline.samples-1)s.net.v[i]=clamp(s.net.v[i]+strength*w,-CONFIG.trampoline.maxVelocity,CONFIG.trampoline.maxVelocity);
+}
+function acceptPresses(s,pressed){
+  for(const p of s.players){
+    if(!pressed.has(PLAYER_KEYS[p.id].bounce))continue;
+    p.savePressTick=s.rallyTicks;
+    if(s.rallyTicks>=p.netPressReady){
+      p.netPressTick=s.rallyTicks;
+      p.netPressReady=s.rallyTicks+CONFIG.bounce.pressCooldownTicks;
+    }
+  }
+}
+function steerAndMove(p,held){
+  const c=CONFIG.player,
+  k=PLAYER_KEYS[p.id],
+  dir=Number(!!held[k.right])-Number(!!held[k.left]);
+  p.prevX=p.x;
+  p.prevY=p.y;
+  p.diving=!!held[k.dive]&&p.vy>=0;
+  if(p.protection>0)p.protection--;
+  if(Math.abs(p.vx)>c.maxVx){
+    p.vx*=c.knockDrag;
+    if(dir&&sign(dir)!==sign(p.vx))p.vx+=dir*c.airAccel*c.escapeControl;
+  }else if(dir)p.vx=clamp(p.vx+dir*c.airAccel,-c.maxVx,c.maxVx);
+  else p.vx*=c.noInputDrag;
+  if(dir)p.facing=dir;
+  p.vy=Math.min(c.maxFallVy,p.vy+c.gravity+(p.diving?c.diveGravityBonus:0));
+  p.x+=p.vx;
+  p.y+=p.vy;
+  if(p.y<c.ceilingY){
+    p.y=c.ceilingY;
+    p.vy=Math.max(0,p.vy);
+  }
+}
+function axisSweep(aMin,aMax,bMin,bMax,delta){
+  if(delta===0)return aMax>bMin&&aMin<bMax?[-Infinity,Infinity]:[Infinity,-Infinity];
+  return delta>0?[(bMin-aMax)/delta,(bMax-aMin)/delta]:[(bMax-aMin)/delta,(bMin-aMax)/delta];
+}
+// Swept relative AABB contact; positive overlap at contact is required for a stomp.
+function bodyContact(a,b){
+  const w=CONFIG.player.width,
+  h=CONFIG.player.height,
+  dx=(a.x-a.prevX)-(b.x-b.prevX),
+  dy=(a.y-a.prevY)-(b.y-b.prevY),
+  xs=axisSweep(a.prevX-w/2,a.prevX+w/2,b.prevX-w/2,b.prevX+w/2,dx),
+  ys=axisSweep(a.prevY,a.prevY+h,b.prevY,b.prevY+h,dy),
+  entry=Math.max(xs[0],ys[0]),
+  exit=Math.min(xs[1],ys[1]),
+  initialOverlap=Math.abs(a.prevX-b.prevX)<w&&Math.abs(a.prevY-b.prevY)<h;
+  if(entry>exit||exit<0||entry>1||(!initialOverlap&&entry<0))return null;
+  return {
+    t:clamp(entry,0,1),
+    vertical:ys[0]>=xs[0],
+    initialOverlap
+  };
+}
+function performStomp(s,a,d,t){
+  const ax=mix(a.prevX,a.x,t),
+  dx=mix(d.prevX,d.x,t),
+  dy=mix(d.prevY,d.y,t),
+  direction=Math.abs(dx-ax)>CONFIG.collision.epsilon?sign(dx-ax):(sign(a.vx)||(d.id===0?-1:1)),
+  relative=a.vy-d.vy,
+  knock=clamp(CONFIG.stomp.horizontalBaseKnock+relative*CONFIG.stomp.horizontalSpeedScale,CONFIG.stomp.horizontalBaseKnock,CONFIG.stomp.horizontalKnockMax);
+  a.x=ax;
+  d.x=dx;
+  d.y=dy;
+  a.y=dy-CONFIG.player.height-CONFIG.collision.epsilon;
+  d.vx=direction*knock;
+  d.vy=Math.max(d.vy,CONFIG.stomp.defenderDownVy);
+  d.tier=CONFIG.bounce.minTier;
+  d.protection=CONFIG.stomp.protectionTicks;
+  a.vy=-CONFIG.stomp.attackerBounceImpulse;
+  a.lastStompTick=s.rallyTicks;
+  d.lastStompTick=s.rallyTicks;
+  s.stats.stomps[a.id]++;
+  emit(s,'STOMP',{
+    id:a.id,
+    x:dx,
+    y:dy,
+    direction
+  });
+}
+function resolvePlayerContact(s){
+  const [a,b]=s.players,
+  c=bodyContact(a,b);
+  if(!c)return false;
+  const h=CONFIG.player.height,
+  tol=CONFIG.collision.topTolerance,
+  overlap=CONFIG.player.width-Math.abs(mix(a.prevX,a.x,c.t)-mix(b.prevX,b.x,c.t)),
+  fromAbove=(p,q)=>overlap>CONFIG.collision.epsilon&&p.prevY+h<=q.prevY+tol&&p.vy>0&&p.vy-q.vy>CONFIG.stomp.minRelativeFallSpeed&&q.protection===0,
+  aTop=c.vertical&&fromAbove(a,b),
+  bTop=c.vertical&&fromAbove(b,a);
+  if(aTop!==bTop){
+    performStomp(s,aTop?a:b,aTop?b:a,c.t);
+    return true;
+  }
+  const ay=mix(a.prevY,a.y,c.t),
+  by=mix(b.prevY,b.y,c.t);
+  if(c.vertical&&Math.abs(ay-by)>h/2){
+    const upper=ay<by?a:b,
+    lower=upper===a?b:a,
+    mean=(upper.vy+lower.vy)/2,
+    separation=Math.min(CONFIG.collision.neutralRebound,Math.max(0,upper.vy-lower.vy)/2);
+    upper.x=mix(upper.prevX,upper.x,c.t);
+    lower.x=mix(lower.prevX,lower.x,c.t);
+    lower.y=mix(lower.prevY,lower.y,c.t);
+    upper.y=lower.y-h-CONFIG.collision.epsilon;
+    upper.vy=mean-separation;
+    lower.vy=mean+separation;
+    return false;
+  }
+  const ax=mix(a.prevX,a.x,c.t),
+  bx=mix(b.prevX,b.x,c.t),
+  direction=sign(bx-ax)||1,
+  mid=(ax+bx)/2,
+  mean=(a.vx+b.vx)/2;
+  a.x=mid-direction*(CONFIG.player.width+CONFIG.collision.epsilon)/2;
+  b.x=mid+direction*(CONFIG.player.width+CONFIG.collision.epsilon)/2;
+  a.y=ay;
+  b.y=by;
+  a.vx=mean-direction*CONFIG.collision.sideImpulse;
+  b.vx=mean+direction*CONFIG.collision.sideImpulse;
+  return false;
+}
+function saveEligible(s,p){
+  return p.recoveryCharge>0&&p.contact&&s.rallyTicks-p.contact.tick<=CONFIG.bumper.postContactGraceTicks&&p.savePressTick>=p.contact.tick-CONFIG.bumper.preContactTicks&&p.savePressTick<=p.contact.tick+CONFIG.bumper.postContactGraceTicks;
+}
+function performSave(s,p){
+  const direction=p.contact.side===0?1:-1;
+  p.recoveryCharge=0;
+  p.vx=direction*CONFIG.bumper.inwardLaunchVx;
+  p.vy=-CONFIG.bumper.upwardLaunchVy;
+  p.lastSaveTick=s.rallyTicks;
+  p.netPressTick=NEVER;
+  p.savePressTick=NEVER;
+  p.contact=null;
+  s.stats.saves[p.id]++;
+  emit(s,'SNAPBACK',{
+    id:p.id,
+    x:p.x,
+    y:p.y,
+    direction
+  });
+}
+// First physical touch anchors grace. A save never relies on net anti-mash cooldown.
+function resolveBumperSave(s,p){
+  const c=CONFIG.bumper,
+  w=CONFIG.player.width,
+  h=CONFIG.player.height;
+  for(let side=0;side<2;side++){
+    const plane=side===0?c.leftX:c.rightX,
+    outward=side===0?p.x-w/2<=plane&&p.prevX-w/2>=plane:p.x+w/2>=plane&&p.prevX+w/2<=plane;
+    if(Math.abs(p.x-plane)>c.rearmDistance)p.bumperLatch[side]=false;
+    if(!outward||p.bumperLatch[side])continue;
+    const before=p.prevX+(side===0?-w/2:w/2),
+    after=p.x+(side===0?-w/2:w/2),
+    t=clamp((plane-before)/(after-before||1),0,1),
+    y=mix(p.prevY,p.y,t);
+    if(y+h<c.topY||y>c.bottomY)continue;
+    p.x=plane+(side===0?w/2:-w/2);
+    p.contact={
+      side,
+      tick:s.rallyTicks
+    };
+    p.bumperLatch[side]=true;
+    p.vx=(side===0?1:-1)*c.softReboundVx;
+    emit(s,'BUMPER',{
+      id:p.id,
+      x:plane,
+      y:y+h/2
+    });
+  }
+  if(saveEligible(s,p)){
+    performSave(s,p);
+    return true;
+  }
+  if(p.contact&&s.rallyTicks-p.contact.tick>c.postContactGraceTicks)p.contact=null;
+  return false;
+}
+function findNetLanding(s,p){
+  if(p.vy<=0)return null;
+  const b=netBounds(s),
+  h=CONFIG.player.height,
+  w=CONFIG.player.width,
+  eps=CONFIG.collision.epsilon,
+  sampleAt=t=>{
+    const x=mix(p.prevX,p.x,t),
+    old=sampleNetAt(s,x,true),
+    now=sampleNetAt(s,x);
+    return {
+      x,
+      y:mix(old.y,now.y,t),
+      vy:now.vy
+    };
+  };
+  if(p.prevY+h>sampleAt(0).y+eps)return null;
+  let prior=0;
+  for(let i=1;i<=CONFIG.collision.sweepSamples;i++){
+    const t=i/CONFIG.collision.sweepSamples,
+    net=sampleAt(t);
+    if(mix(p.prevY,p.y,t)+h>=net.y){
+      let lo=prior,
+      hi=t;
+      for(let j=0;j<CONFIG.collision.rootIterations;j++){
+        const mid=(lo+hi)/2,
+        n=sampleAt(mid);
+        if(mix(p.prevY,p.y,mid)+h>=n.y)hi=mid;
+        else lo=mid;
+      }
+      const hit=sampleAt(hi);
+      if(hit.x+w/2<b.left||hit.x-w/2>b.right)return null;
+      return hit;
+    }
+    prior=t;
+  }
+  return null;
+}
+function resolveNetLandings(s){
+  const pending=[];
+  for(const p of s.players){
+    const hit=findNetLanding(s,p);
+    if(!hit)continue;
+    const perfect=s.rallyTicks-p.netPressTick<=CONFIG.bounce.perfectWindowTicks&&p.netPressTick<=s.rallyTicks;
+    p.tier=clamp(p.tier+(perfect?1:-1),CONFIG.bounce.minTier,CONFIG.bounce.maxTier);
+    const wave=clamp(-hit.vy,-CONFIG.bounce.netWaveGainMax,CONFIG.bounce.netWaveGainMax),
+    impact=CONFIG.trampoline.impactStrength*clamp(p.vy/CONFIG.trampoline.impactSpeedReference,CONFIG.trampoline.impactScaleMin,CONFIG.trampoline.impactScaleMax)*(p.diving?CONFIG.trampoline.diveImpactMultiplier:1);
+    p.x=hit.x;
+    p.y=hit.y-CONFIG.player.height-CONFIG.collision.epsilon;
+    p.vy=-(CONFIG.bounce.baseImpulse+p.tier*CONFIG.bounce.impulsePerTier+wave);
+    p.netPressTick=NEVER;
+    p.savePressTick=NEVER;
+    p.lastLandingTick=s.rallyTicks;
+    s.stats.bounces[p.id]++;
+    if(perfect)s.stats.perfect[p.id]++;
+    pending.push({
+      x:clamp(hit.x,netBounds(s).left,netBounds(s).right),
+      strength:impact
+    });
+    emit(s,perfect?'PERFECT':'BOUNCE',{
+      id:p.id,
+      x:p.x,
+      y:hit.y,
+      tier:p.tier,
+      wave
+    });
+  }
+  for(const i of pending)impactNet(s,i.x,i.strength);
+  return pending.length;
+}
+function resolveRallyOutcome(s){
+  if(s.phase!=='RALLY')return false;
+  const out=s.players.map(p=>p.y>CONFIG.canvas.height);
+  if(!out.some(Boolean))return false;
+  const winner=out[0]===out[1]?null:(out[0]?1:0);
+  s.pendingPoint=winner;
+  if(winner===null)s.stats.draws++;
+  else{
+    s.scores[winner]++;
+    s.stats.points++;
+  }
+  clearPlayerPresses(s);
+  emit(s,winner===null?'DRAW':'POINT',{
+    id:winner,
+    x:CONFIG.canvas.width/2,
+    y:200
+  });
+  if(winner!==null&&s.scores[winner]>=CONFIG.scoring.pointsToWin){
+    s.winner=winner;
+    s.phase='MATCH_OVER';
+    emit(s,'VICTORY',{
+      id:winner
+    });
+  }else{
+    s.phase='POINT_FREEZE';
+    s.pointTicks=Math.round(CONFIG.scoring.pointPresentationSeconds*CONFIG.simulation.hz);
+  }
+  return true;
+}
+// Sole physics coordinator: forces, mesh, bodies, bumpers, landings, simultaneous KO.
+function stepSimulation(s,input={
+  held:{
+  },
+  pressed:[]
+}){
+  if(!['RALLY','POINT_FREEZE'].includes(s.phase))return false;
+  s.events=[];
+  s.totalTicks++;
+  s.effects=s.effects.filter(e=>s.totalTicks-e.tick<CONFIG.presentation.eventTicks);
+  if(s.phase==='POINT_FREEZE'){
+    s.pointTicks--;
+    if(s.pointTicks<=0)resetRally(s);
+    return true;
+  }
+  s.rallyTicks++;
+  acceptPresses(s,new Set(input.pressed||[]));
+  const o=CONFIG.overdrive;
+  if(o.enabled){
+    const start=Math.round(o.beginSeconds*CONFIG.simulation.hz),
+    warning=Math.round(o.warningSeconds*CONFIG.simulation.hz);
+    if(s.rallyTicks===start-warning)emit(s,'WARNING');
+    if(s.rallyTicks===start)emit(s,'OVERDRIVE');
+    s.overdriveInset=clamp((s.rallyTicks-start)/(o.shrinkSeconds*CONFIG.simulation.hz),0,1)*o.maxInsetEachSide;
+  }
+  for(const p of s.players){
+    const wasDiving=p.diving;
+    steerAndMove(p,input.held||{
+    });
+    if(p.diving&&!wasDiving&&s.rallyTicks>=p.diveSoundReady){
+      emit(s,'DIVE',{
+        id:p.id,
+        x:p.x,
+        y:p.y
+      });
+      p.diveSoundReady=s.rallyTicks+CONFIG.audio.dive.cooldownTicks;
+    }
+  }
+  stepNet(s);
+  resolvePlayerContact(s);
+  for(const p of s.players)resolveBumperSave(s,p);
+  resolveNetLandings(s);
+  resolveRallyOutcome(s);
+  for(const p of s.players){
+    if(s.rallyTicks-p.netPressTick>CONFIG.bounce.perfectWindowTicks)p.netPressTick=NEVER;
+    if(s.rallyTicks-p.savePressTick>CONFIG.bumper.preContactTicks)p.savePressTick=NEVER;
+  }
+  return true;
+}
+// Physical key codes, independent held state, and one fresh edge per release/press.
+function createInput(){
+  const held=Object.create(null),
+  edges=new Set();
+  return {
+    held,
+    keydown(e){
+      if(!GAME_KEYS.has(e.code))return false;
+      if(e.preventDefault)e.preventDefault();
+      if(e.repeat||held[e.code])return false;
+      held[e.code]=true;
+      edges.add(e.code);
+      return true;
+    },
+    keyup(e){
+      if(GAME_KEYS.has(e.code)&&e.preventDefault)e.preventDefault();
+      delete held[e.code];
+    },
+    take(){
+      const pressed=Array.from(edges);
+      edges.clear();
+      return {
+        held:Object.assign({
+        },held),
+        pressed
+      };
+    },
+    clear(){
+      for(const k of Object.keys(held))delete held[k];
+      edges.clear();
+    }
+  };
+}
+// Rendering cadence never controls physics. Reset invalidates in-flight catch-up.
+function createFrameDriver(update,render=()=>{
+}){
+  let last=null,
+  acc=0,
+  generation=0;
+  const stepMs=1000/CONFIG.simulation.hz;
+  return {
+    reset(){
+      last=null;
+      acc=0;
+      generation++;
+    },
+    frame(timestamp,running=true){
+      if(last===null)last=timestamp;
+      const elapsed=clamp(timestamp-last,0,CONFIG.simulation.maxFrameMs);
+      last=timestamp;
+      if(!running){
+        acc=0;
+        render(0);
+        return 0;
+      }
+      acc+=elapsed;
+      let count=0;
+      const activeGeneration=generation;
+      while(acc+1e-7>=stepMs&&count<CONFIG.simulation.maxSteps){
+        update();
+        count++;
+        if(generation!==activeGeneration){
+          render(0);
+          return count;
+        }
+        acc=Math.max(0,acc-stepMs);
+      }
+      if(count===CONFIG.simulation.maxSteps&&acc>=stepMs)acc%=stepMs;
+      render(acc/stepMs);
+      return count;
+    }
+  };
+}
+function landingSoon(s,p){
+  if(p.vy<0)return false;
+  const b=netBounds(s);
+  if(p.x<b.left||p.x>b.right)return false;
+  const distance=sampleNetAt(s,p.x).y-p.y-CONFIG.player.height,
+  g=CONFIG.player.gravity+(p.diving?CONFIG.player.diveGravityBonus:0),
+  t=(-p.vy+Math.sqrt(Math.max(0,p.vy*p.vy+2*g*Math.max(0,distance))))/g;
+  return distance>=0&&t<=CONFIG.bounce.perfectWindowTicks;
+}
+// RENDERER_START
+// Canvas-only presentation. Reads simulation state; never mutates it.
+const ART = CONFIG.art;
+function artText(ctx, text, x, y, size, color = CONFIG.colors.ivory, align = 'center', weight = 700) {
+  ctx.fillStyle = color;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `${weight} ${size}px Arial, Helvetica, sans-serif`;
+  ctx.fillText(text, x, y);
+}
+function artLine(ctx, points, color, width = 1) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  for (let i = 0; i < points.length; i++) {
+    if (i === 0) ctx.moveTo(points[i][0], points[i][1]);
+    else ctx.lineTo(points[i][0], points[i][1]);
+  }
+  ctx.stroke();
+}
+function artPolygon(ctx, points, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  points.forEach((point, i) => i === 0 ? ctx.moveTo(...point) : ctx.lineTo(...point));
+  ctx.closePath();
+  ctx.fill();
+}
+function artCircle(ctx, x, y, radius, color, stroke = false, width = 1) {
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  if (stroke) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+}
+function artPlayerColor(id) {
+  return id === 0 ? CONFIG.colors.coral : CONFIG.colors.mint;
+}
+function artPlayerName(id) {
+  return id === 0 ? 'CORAL' : 'MINT';
+}
+function artBackdrop(ctx) {
+  const C = CONFIG.colors;
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
+  artLine(ctx, [[ART.margin, ART.frameTop], [CONFIG.canvas.width - ART.margin, ART.frameTop]], ART.colors.marking);
+  artLine(ctx, [[ART.margin, 503], [CONFIG.canvas.width - ART.margin, 503]], ART.colors.marking);
+  // Quiet court registration marks, well outside the collision surface.
+  for (const x of [ART.margin, CONFIG.canvas.width - ART.margin]) {
+    artLine(ctx, [[x, 132], [x, 154]], ART.colors.marking, 2);
+    artLine(ctx, [[x, 458], [x, 484]], ART.colors.marking, 2);
+  }
+}
+function artPip(ctx, x, y, filled, id, size = 7) {
+  const color = filled ? artPlayerColor(id) : CONFIG.colors.steel;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  if (id === 0) {
+    ctx.moveTo(x, y - size / 2);
+    ctx.lineTo(x + size / 2, y);
+    ctx.lineTo(x, y + size / 2);
+    ctx.lineTo(x - size / 2, y);
+    ctx.closePath();
+  } else ctx.arc(x, y, size / 2, 0, Math.PI * 2);
+  if (filled) ctx.fill();
+  else ctx.stroke();
+}
+function artCharge(ctx, x, y, charged, color) {
+  artCircle(ctx, x, y, 8, charged ? color : CONFIG.colors.steel, true, 1.5);
+  if (charged) {
+    artLine(ctx, [[x + 3, y - 3], [x - 3, y - 3], [x - 3, y + 3]], color, 1.5);
+    artPolygon(ctx, [[x - 6, y + 1], [x, y + 1], [x - 3, y + 5]], color);
+  } else artLine(ctx, [[x - 4, y + 4], [x + 4, y - 4]], CONFIG.colors.steel, 1.5);
+}
+function artHud(ctx, s) {
+  const H = ART.score,
+  C = CONFIG.colors;
+  for (const p of s.players) {
+    const left = p.id === 0,
+    x = left ? H.playerLeft : H.playerRight,
+    dir = left ? 1 : -1;
+    artText(ctx, `${p.id + 1} / ${artPlayerName(p.id)}`, x, H.nameY, 18, artPlayerColor(p.id), left ? 'left' : 'right', 900);
+    for (let i = 0; i < CONFIG.bounce.maxTier; i++) artPip(ctx, x + dir * (5 + i * 15), H.pipY, i < p.tier, p.id);
+    artCharge(ctx, x + dir * 96, H.pipY, p.recoveryCharge > 0, artPlayerColor(p.id));
+    artText(ctx, p.recoveryCharge ? 'SAVE' : 'USED', x + dir * 113, H.pipY + 4, 10, p.recoveryCharge ? C.ivory : C.steel, left ? 'left' : 'right');
+    const keys = left ? 'A D MOVE    W TIME / SAVE    S DIVE' : '← → MOVE    ↑ TIME / SAVE    ↓ DIVE';
+    artText(ctx, keys, x, H.keysY, 12, ART.colors.dimPaper, left ? 'left' : 'right', 600);
+  }
+  artText(ctx, 'FIRST TO 3', ART.centerX, H.top, 11, C.gold);
+  artText(ctx, String(s.scores[0]), ART.centerX - H.spread, H.baseline, H.size, C.ivory, 'center', 900);
+  artText(ctx, ':', ART.centerX, H.baseline - 7, 38, C.steel, 'center', 900);
+  artText(ctx, String(s.scores[1]), ART.centerX + H.spread, H.baseline, H.size, C.ivory, 'center', 900);
+  artText(ctx, `RALLY ${s.rallyIndex}`, ART.centerX, 95, 10, C.steel);
+}
+// The visual polyline follows exactly the same samples as sampleNetAt().
+function artNet(ctx, s) {
+  const C = CONFIG.colors,
+  N = ART.net,
+  bounds = netBounds(s),
+  points = [];
+  for (let i = 0; i < CONFIG.trampoline.samples; i++) {
+    points.push([mix(bounds.left, bounds.right, i / (CONFIG.trampoline.samples - 1)), CONFIG.trampoline.equilibriumY + s.net.d[i]]);
+  }
+  ctx.save();
+  ctx.globalAlpha = .68;
+  for (let i = 0; i < points.length - N.meshStride; i += N.meshStride) {
+    const a = points[i],
+    b = points[i + N.meshStride];
+    artLine(ctx, [a, [mix(a[0], b[0], .5), Math.max(a[1], b[1]) + N.meshDepth], b], ART.colors.mesh, 1);
+  }
+  ctx.restore();
+  artLine(ctx, points, C.gold, N.cordWidth);
+  artLine(ctx, points, C.ivory, N.highlightWidth);
+  for (const x of [bounds.left, bounds.right]) {
+    artLine(ctx, [[x, CONFIG.trampoline.equilibriumY], [x, CONFIG.trampoline.equilibriumY + N.postDepth]], C.gold, 3);
+    artLine(ctx, [[x - N.footHalf, CONFIG.trampoline.equilibriumY + N.postDepth], [x + N.footHalf, CONFIG.trampoline.equilibriumY + N.postDepth]], C.gold, 2);
+    artCircle(ctx, x, CONFIG.trampoline.equilibriumY, 4, C.gold);
+  }
+  if (CONFIG.overdrive.enabled && s.rallyTicks >= CONFIG.overdrive.beginSeconds * CONFIG.simulation.hz) {
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    for (const pair of [[CONFIG.trampoline.left, bounds.left], [bounds.right, CONFIG.trampoline.right]]) artLine(ctx, [[pair[0], 446], [pair[1], 446]], C.gold, 1);
+    ctx.restore();
+    artText(ctx, 'OVERDRIVE / SAFE SPAN CONTRACTING', ART.centerX, 452, 11, C.gold);
+  }
+}
+function artBumperOpportunity(s, p, side) {
+  if (!p.recoveryCharge) return false;
+  const B = CONFIG.bumper;
+  if (p.contact && p.contact.side === side && s.rallyTicks - p.contact.tick <= B.postContactGraceTicks) return true;
+  const outward = side === 0 ? -1 : 1;
+  if (p.vx * outward <= CONFIG.collision.epsilon) return false;
+  const plane = side === 0 ? B.leftX : B.rightX;
+  const edge = p.x + outward * CONFIG.player.width / 2;
+  const distance = (plane - edge) * outward;
+  const ticks = distance / (p.vx * outward);
+  if (distance < 0 || distance > B.promptDistance || ticks > B.preContactTicks) return false;
+  const gravity = CONFIG.player.gravity + (p.diving ? CONFIG.player.diveGravityBonus : 0);
+  const y = p.y + p.vy * ticks + gravity * ticks * (ticks + 1) / 2;
+  return y + CONFIG.player.height >= B.topY && y <= B.bottomY;
+}
+function artBumpers(ctx, s) {
+  const B = CONFIG.bumper,
+  A = ART.bumper,
+  C = CONFIG.colors;
+  for (let side = 0; side < 2; side++) {
+    const x = side === 0 ? B.leftX : B.rightX;
+    const ready = s.players.filter(p => artBumperOpportunity(s, p, side));
+    const color = ready.length === 1 ? artPlayerColor(ready[0].id) : ready.length ? C.gold : C.steel;
+    ctx.save();
+    ctx.globalAlpha = ready.length ? 1 : .7;
+    artLine(ctx, [[x, B.topY], [x, B.bottomY]], color, ready.length ? 4 : 2);
+    for (let y = B.topY + ART.net.stitchStep; y < B.bottomY; y += ART.net.stitchStep) artLine(ctx, [[x - A.halfWidth, y - 3], [x + A.halfWidth, y + 3]], color, 1);
+    for (const y of [B.topY, B.bottomY]) artLine(ctx, [[x - A.bracket, y], [x + A.bracket, y]], color, 2);
+    ctx.restore();
+    const direction = side === 0 ? 1 : -1;
+    artText(ctx, 'SAVE BAND', x, B.topY - 14, 10, C.steel);
+    if (ready.length) {
+      const cy = (B.topY + B.bottomY) / 2;
+      artLine(ctx, [[x + direction * 13, cy], [x + direction * A.arrowOffset, cy], [x + direction * 18, cy - 5]], color, 2);
+      for (const p of ready) {
+        const px = clamp(p.x + direction * A.promptOffset, 65, CONFIG.canvas.width - 65);
+        const py = clamp(p.y - 18, 142, 478);
+        artText(ctx, p.id === 0 ? '[W] SAVE' : '[↑] SAVE', px, py, 13, artPlayerColor(p.id), 'center', 900);
+      }
+    }
+  }
+}
+function artArena(ctx, s) {
+  const bounds = netBounds(s),
+  C = CONFIG.colors;
+  ctx.fillStyle = C.deep;
+  ctx.fillRect(0, CONFIG.trampoline.equilibriumY, bounds.left, CONFIG.canvas.height - CONFIG.trampoline.equilibriumY);
+  ctx.fillRect(bounds.right, CONFIG.trampoline.equilibriumY, CONFIG.canvas.width - bounds.right, CONFIG.canvas.height - CONFIG.trampoline.equilibriumY);
+  for (const [x, dir] of [[0, 1], [CONFIG.canvas.width, -1]]) {
+    artLine(ctx, [[x + dir * 23, 453], [x + dir * 31, 461], [x + dir * 23, 469]], ART.colors.marking, 2);
+  }
+  artText(ctx, 'PIT', CONFIG.bumper.leftX, 480, 12, C.steel);
+  artText(ctx, 'PIT', CONFIG.bumper.rightX, 480, 12, C.steel);
+  artBumpers(ctx, s);
+  artNet(ctx, s);
+}
+function artAthlete(ctx, p, s, options = {
+}) {
+  const C = CONFIG.colors,
+  A = ART.player,
+  h = CONFIG.player.height;
+  const x = options.x ?? p.x,
+  footY = options.footY ?? p.y + h,
+  scale = options.scale ?? 1;
+  const age = s.rallyTicks - p.lastLandingTick;
+  let sx = 1,
+  sy = 1;
+  if (!s.reducedMotion && age >= 0 && age < CONFIG.presentation.squashTicks) {
+    const amount = 1 - age / CONFIG.presentation.squashTicks;
+    sx += A.squashWidth * amount;
+    sy -= A.squashHeight * amount;
+  } else if (!s.reducedMotion && Math.abs(p.vy) > CONFIG.bounce.baseImpulse) {
+    sx -= A.stretch;
+    sy += A.stretch;
+  }
+  const direction = p.facing || (p.id === 0 ? 1 : -1);
+  ctx.save();
+  ctx.translate(x, footY);
+  ctx.scale(scale * sx, scale * sy);
+  if (!s.reducedMotion) ctx.rotate(clamp(p.vx / CONFIG.player.maxVx, -1, 1) * A.lean);
+  if (p.protection > 0) {
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = C.ivory;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(0, -h / 2, A.protectionRadius, A.protectionRadius + 3, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Hands, singlet, shorts and sneakers remain compact around the 28x40 collider.
+  artLine(ctx, [[-8, -24], [-13, -13], [-10, -9]], artPlayerColor(p.id), 4);
+  artLine(ctx, [[8, -24], [13, -13], [10, -9]], artPlayerColor(p.id), 4);
+  artPolygon(ctx, [[-8,-25],[8,-25],[10,-12],[6,-7],[-6,-7],[-10,-12]], artPlayerColor(p.id));
+  artLine(ctx, [[-7,-10],[7,-10]], C.deep, 2);
+  artLine(ctx, [[-5,-7],[-6,-1],[-11,-1]], C.ivory, 4);
+  artLine(ctx, [[5,-7],[6,-1],[11,-1]], C.ivory, 4);
+  if (p.id === 0) {
+    artPolygon(ctx, [[-10,-36],[-5,-40],[6,-39],[10,-32],[8,-25],[-7,-25]], C.ivory);
+    artPolygon(ctx, [[-11,-35],[-7,-42],[-3,-39],[1,-44],[8,-38],[10,-34]], artPlayerColor(p.id));
+    artLine(ctx, [[-9,-33],[9,-33]], artPlayerColor(p.id), 3);
+    artPolygon(ctx, [[-9,-33],[-16,-30],[-12,-36]], artPlayerColor(p.id));
+  } else {
+    artCircle(ctx, 0, -32, 10, C.ivory);
+    artPolygon(ctx, [[-9,-35],[8,-35],[10,-31],[7,-28],[-9,-28]], artPlayerColor(p.id));
+    artLine(ctx, [[-5,-40],[-8,-45],[-4,-47]], artPlayerColor(p.id), 2);
+  }
+  const eyeX = direction * 3;
+  artCircle(ctx, eyeX - 3, -31, A.eyeSize / 2, C.deep);
+  artCircle(ctx, eyeX + 2, -31, A.eyeSize / 2, C.deep);
+  if (p.diving) artLine(ctx, [[eyeX-5,-35],[eyeX+4,-33]], C.deep, 1);
+  if (s.rallyTicks - p.lastSaveTick < CONFIG.presentation.eventTicks) artCircle(ctx, eyeX, -26.5, 1.5, C.deep, true, .8);
+  else artLine(ctx, [[eyeX-2,-26],[eyeX+2,-26]], C.deep, 1);
+  ctx.restore();
+}
+function artLandingCue(ctx, s, p) {
+  if (!landingSoon(s, p)) return;
+  const y = sampleNetAt(s, p.x).y;
+  ctx.save();
+  ctx.setLineDash([3, 3]);
+  artLine(ctx, [[p.x - 23, y - 6], [p.x + 23, y - 6]], CONFIG.colors.gold, 1.5);
+  ctx.restore();
+  artText(ctx, p.id === 0 ? 'W' : '↑', p.x, y + 31, 15, CONFIG.colors.gold, 'center', 900);
+}
+function artTrails(ctx, s, p) {
+  if (s.reducedMotion || (!p.diving && s.rallyTicks - p.lastSaveTick >= CONFIG.presentation.trailTicks)) return;
+  ctx.save();
+  ctx.globalAlpha = .28;
+  for (let i = 1; i <= ART.player.maxTrail; i++) {
+    const x = p.x - p.vx * i,
+    y = p.y - p.vy * i;
+    artLine(ctx, [[x - 8, y + 13], [x - 8 - p.vx * .8, y + 13 - p.vy * .8]], artPlayerColor(p.id), ART.player.trailWidth);
+  }
+  ctx.restore();
+}
+function artEdgeMarker(ctx, p) {
+  if (p.x >= 0 && p.x <= CONFIG.canvas.width) return;
+  const left = p.x < 0,
+  x = left ? 12 : CONFIG.canvas.width - 12,
+  dir = left ? -1 : 1,
+  y = clamp(p.y + CONFIG.player.height / 2, 145, 480);
+  artPolygon(ctx, [[x + dir * 6, y], [x - dir * 3, y - 5], [x - dir * 3, y + 5]], artPlayerColor(p.id));
+  artText(ctx, String(p.id + 1), x - dir * 13, y + 4, 12, CONFIG.colors.ivory);
+}
+function artEffect(ctx, s, e) {
+  const C = CONFIG.colors,
+  age = s.totalTicks - e.tick,
+  duration = CONFIG.presentation.eventTicks;
+  if (age < 0 || age >= duration) return;
+  const progress = age / duration;
+  const alpha = progress < ART.effect.fadeStart ? 1 : (1 - progress) / (1 - ART.effect.fadeStart);
+  const rise = s.reducedMotion ? 0 : progress * ART.effect.rise;
+  const color = e.id === 0 || e.id === 1 ? artPlayerColor(e.id) : C.gold;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (e.type === 'PERFECT') {
+    artText(ctx, 'PERFECT', clamp(e.x, 76, 884), e.y - 64 - rise, ART.effect.perfectSize, C.gold, 'center', 900);
+  } else if (e.type === 'STOMP' || e.type === 'SNAPBACK') {
+    const save = e.type === 'SNAPBACK';
+    const x = clamp(e.x + (e.direction || 1) * (save ? 67 : 36), 90, 870);
+    const y = clamp(e.y - 25 - rise, 145, 458);
+    artText(ctx, save ? 'SNAPBACK!' : 'STOMP!', x, y, save ? ART.effect.saveSize : ART.effect.stompSize, save ? C.gold : color, 'center', 900);
+    if (!s.reducedMotion && age < ART.effect.impactTicks) {
+      const r = ART.effect.starRadius * (1 - age / ART.effect.impactTicks);
+      for (let i = 0; i < 4; i++) {
+        const angle = Math.PI * i / 2 + Math.PI / 4;
+        artLine(ctx, [[e.x + Math.cos(angle) * r, e.y + Math.sin(angle) * r], [e.x + Math.cos(angle) * (r + 5), e.y + Math.sin(angle) * (r + 5)]], color, 2);
+      }
+    }
+  } else if (e.type === 'WARNING' || e.type === 'OVERDRIVE') {
+    artText(ctx, e.type === 'WARNING' ? 'NET NARROWS SOON' : 'OVERDRIVE', ART.centerX, 148, e.type === 'WARNING' ? 16 : 24, C.gold, 'center', 900);
+  } else if (e.type === 'BOUNCE' && !s.reducedMotion && age < ART.effect.impactTicks) {
+    const r = 5 + age * 1.2;
+    artLine(ctx, [[e.x-r, e.y-4], [e.x-r-5, e.y-8]], color, 1.5);
+    artLine(ctx, [[e.x+r, e.y-4], [e.x+r+5, e.y-8]], color, 1.5);
+  }
+  ctx.restore();
+}
+function artShake(s) {
+  if (s.reducedMotion || s.phase !== 'RALLY') return [0, 0];
+  let magnitude = 0;
+  for (const e of s.effects) {
+    const age = s.totalTicks - e.tick;
+    if (age < 0 || age >= CONFIG.presentation.shakeTicks) continue;
+    const amount = e.type === 'STOMP' ? CONFIG.presentation.stompShakePx : e.type === 'SNAPBACK' ? CONFIG.presentation.saveShakePx : 0;
+    magnitude = Math.max(magnitude, amount * (1 - age / CONFIG.presentation.shakeTicks));
+  }
+  return [Math.sin(s.totalTicks * ART.effect.shakeX) * magnitude, Math.cos(s.totalTicks * ART.effect.shakeY) * magnitude * .5];
+}
+function artWordmark(ctx) {
+  const T = ART.title;
+  ctx.save();
+  ctx.translate(ART.centerX, T.wordY);
+  ctx.transform(1, 0, -.08, 1, 0, 0);
+  ctx.font = `900 ${T.wordSize}px Arial Black, Arial, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = CONFIG.colors.ivory;
+  const word = 'SNAPBACK',
+  widths = Array.from(word, letter => ctx.measureText(letter).width),
+  total = widths.reduce((a,b) => a+b, 0),
+  scale = Math.min(1, T.wordWidth / total);
+  ctx.scale(scale, 1);
+  let x = -total / 2;
+  Array.from(word).forEach((letter, i) => {
+    ctx.fillText(letter, x, Math.sin(Math.PI * i / (word.length - 1)) * T.wordBend); x += widths[i];
+  });
+  ctx.restore();
+  artLine(ctx, [[160,T.underlineY],[ART.centerX,T.underlineY+9],[800,T.underlineY]], CONFIG.colors.gold, 3);
+}
+function artTitle(ctx, s, time) {
+  const C = CONFIG.colors,
+  T = ART.title;
+  artText(ctx, 'LOCAL TWO-PLAYER ARCADE', ART.centerX, T.labelY, 12, C.gold);
+  artWordmark(ctx);
+  artText(ctx, 'Every fall is a chance for a comeback.', ART.centerX, T.taglineY, 18, C.ivory, 'center', 500);
+  const points = [];
+  for (let i = 0; i <= CONFIG.trampoline.samples; i++) {
+    const x = mix(T.netLeft, T.netRight, i / CONFIG.trampoline.samples),
+    wave = s.reducedMotion ? 0 : Math.sin(time * T.hopSpeed * 2 - i * .35) * 2;
+    points.push([x, T.netY + Math.sin(Math.PI * i / CONFIG.trampoline.samples) * (4 + wave)]);
+  }
+  artLine(ctx, points, C.gold, 3);
+  for (const x of [T.netLeft, T.netRight]) artLine(ctx, [[x,T.netY],[x,T.netY+12]], C.gold, 3);
+  s.players.forEach((p, i) => {
+    const hop = s.reducedMotion ? 0 : Math.abs(Math.sin(time * T.hopSpeed + i * Math.PI / 2)) * T.hopHeight; artAthlete(ctx, p, s, {
+      x:T.athleteX[i],
+      footY:T.netY-hop,
+      scale:T.athleteScale
+    }); artText(ctx, `${i+1} / ${artPlayerName(i)}`, T.athleteX[i], T.nameY, 23, artPlayerColor(i), 'center', 900); artText(ctx, i === 0 ? 'A / D   MOVE' : '← / →   MOVE', T.athleteX[i], T.moveY, 16, C.ivory); artText(ctx, i === 0 ? 'W  TIME / SAVE     S  DIVE' : '↑  TIME / SAVE     ↓  DIVE', T.athleteX[i], T.actionY, 15, C.ivory);
+  });
+  artText(ctx, 'STOMP YOUR RIVAL INTO A PIT. FIRST TO THREE.', ART.centerX, 448, 12, C.gold);
+  artText(ctx, 'SPACE / ENTER — PLAY', ART.centerX, T.playY, 28, C.ivory, 'center', 900);
+}
+function artPause(ctx, s) {
+  const O = ART.overlay,
+  C = CONFIG.colors;
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, O.top, CONFIG.canvas.width, O.bottom - O.top);
+  artText(ctx, 'TIME OUT', ART.centerX, O.titleY, 78, C.ivory, 'center', 900);
+  artText(ctx, 'ESC — RESUME', ART.centerX, O.actionY, 27, C.gold, 'center', 900);
+  artText(ctx, 'CORAL', 255, O.controlsY, 20, C.coral);
+  artText(ctx, 'MINT', 705, O.controlsY, 20, C.mint);
+  artText(ctx, 'A D MOVE · W TIME / SAVE · S DIVE', 255, O.controlsY+30, 14, C.ivory);
+  artText(ctx, '← → MOVE · ↑ TIME / SAVE · ↓ DIVE', 705, O.controlsY+30, 14, C.ivory);
+  artText(ctx, 'One timed save per player, per rally.', ART.centerX, 408, 17, C.ivory, 'center', 500);
+  artText(ctx, `M · SOUND ${s.muted ? 'OFF' : 'ON'}     /     V · MOTION ${s.reducedMotion ? 'REDUCED' : 'FULL'}`, ART.centerX, O.settingsY, 14, C.gold);
+}
+function artPoint(ctx, s) {
+  const draw = s.pendingPoint === null,
+  color = draw ? CONFIG.colors.gold : artPlayerColor(s.pendingPoint);
+  ctx.fillStyle = CONFIG.colors.ink;
+  ctx.fillRect(190, 137, 580, 104);
+  artLine(ctx, [[210,143],[750,143]], color, 2);
+  artText(ctx, draw ? 'DOUBLE OUT' : `${artPlayerName(s.pendingPoint)} POINT`, ART.centerX, 199, 48, color, 'center', 900);
+  artText(ctx, draw ? 'NO POINT. BACK ON THE NET.' : 'BACK ON THE NET.', ART.centerX, 225, 13, CONFIG.colors.ivory);
+}
+function artWinner(ctx, s) {
+  const C = CONFIG.colors,
+  color = artPlayerColor(s.winner),
+  p = s.players[s.winner];
+  ctx.fillStyle = C.ink;
+  ctx.fillRect(0, ART.overlay.top, CONFIG.canvas.width, ART.overlay.bottom - ART.overlay.top);
+  artText(ctx, 'MATCH', ART.centerX, 154, 12, C.gold);
+  artText(ctx, `${artPlayerName(s.winner)} WINS`, ART.centerX, 230, 76, color, 'center', 900);
+  artAthlete(ctx, p, s, {
+    x:ART.centerX,
+    footY:341,
+    scale:1.8
+  });
+  artText(ctx, 'RUN IT BACK.', ART.centerX, 387, 23, C.ivory, 'center', 900);
+  artText(ctx, 'SPACE / ENTER — REMATCH', ART.centerX, 443, 26, C.gold, 'center', 900);
+}
+function drawGame(ctx, s, time) {
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  artBackdrop(ctx);
+  if (s.phase === 'TITLE') artTitle(ctx, s, time);
+  else {
+    artHud(ctx, s);
+    const shake = artShake(s);
+    ctx.save();
+    ctx.translate(...shake);
+    if (s.phase === 'RALLY' || s.phase === 'POINT_FREEZE') artArena(ctx, s);
+    if (s.phase === 'RALLY') for (const p of s.players) {
+      artLandingCue(ctx, s, p);
+      artTrails(ctx, s, p);
+      artAthlete(ctx, p, s);
+      artEdgeMarker(ctx, p);
+    }
+    if (s.phase === 'RALLY') for (const e of s.effects) artEffect(ctx, s, e);
+    ctx.restore();
+    if (s.phase === 'PAUSED') artPause(ctx, s);
+    else if (s.phase === 'MATCH_OVER') artWinner(ctx, s);
+    else if (s.phase === 'POINT_FREEZE') artPoint(ctx, s);
+    else if (s.rallyIndex === 1 && s.rallyTicks < CONFIG.presentation.helpTicks) {
+      artText(ctx, 'TIME THE LANDING. TAKE THE HIGH GROUND.', ART.centerX, 474, 15, CONFIG.colors.ivory);
+      artText(ctx, 'Tap W / ↑ just before landing. Dive from above.', ART.centerX, 492, 12, ART.colors.dimPaper, 'center', 500);
+    }
+  }
+  artText(ctx, 'ESC PAUSE   /   M SOUND   /   V MOTION', ART.margin, ART.footerY, 11, ART.colors.dimPaper, 'left', 600);
+  ctx.restore();
+}
+// RENDERER_END
+// Short local synthesis. Failures and blocked audio never affect simulation.
+function createAudio(){
+  let context=null,
+  master=null,
+  muted=false,
+  paused=false;
+  const voices=new Set();
+  function stop(){
+    for(const voice of Array.from(voices)){
+      try{
+        voice.oscillator.stop();
+      }catch(_){
+      }
+      voice.release();
+    }
+    voices.clear();
+  }
+  function updateGain(){
+    if(master)master.gain.value=muted||paused?0:CONFIG.audio.masterGain;
+  }
+  function setMuted(value){
+    muted=value;
+    updateGain();
+    if(muted)stop();
+  }
+  function unlock(){
+    try{
+      if(!context){
+        const AudioCtor=globalThis.AudioContext||globalThis.webkitAudioContext;
+        if(!AudioCtor)return;
+        context=new AudioCtor();
+        master=context.createGain();
+        updateGain();
+        master.connect(context.destination);
+      }
+      if(context.state==='suspended')context.resume().catch(()=>{
+      });
+    }catch(_){
+      context=null;
+      master=null;
+    }
+  }
+  function note(frequency,duration,type,offset=0,endFrequency=frequency){
+    const c=CONFIG.audio;
+    if(!context||context.state!=='running'||muted||paused||voices.size>=c.maxVoices)return;
+    let oscillator=null,
+    gain=null,
+    voice=null;
+    try{
+      oscillator=context.createOscillator();
+      gain=context.createGain();
+      const start=context.currentTime+offset;
+      voice={
+        oscillator,
+        gain,
+        release(){
+          voices.delete(voice);
+          oscillator.onended=null;
+          try{
+            oscillator.disconnect();
+          }catch(_){
+          }
+          try{
+            gain.disconnect();
+          }catch(_){
+          }
+        }
+      };
+      oscillator.type=type;
+      oscillator.frequency.setValueAtTime(frequency,start);
+      oscillator.frequency.exponentialRampToValueAtTime(Math.max(1,endFrequency),start+duration);
+      gain.gain.setValueAtTime(c.floorGain,start);
+      gain.gain.exponentialRampToValueAtTime(c.peakGain,start+c.attackSeconds);
+      gain.gain.exponentialRampToValueAtTime(c.floorGain,start+duration);
+      oscillator.connect(gain);
+      gain.connect(master);
+      voices.add(voice);
+      oscillator.onended=voice.release;
+      oscillator.start(start);
+      oscillator.stop(start+duration+c.releasePadding);
+    }catch(_){
+      if(voice)voice.release();
+      else{
+        if(oscillator)try{
+          oscillator.disconnect();
+        }catch(_){
+        }
+        if(gain)try{
+          gain.disconnect();
+        }catch(_){
+        }
+      }
+    }
+  }
+  function phrase(cue){
+    cue.notes.forEach((frequency,i)=>note(frequency,cue.seconds,cue.wave,(cue.spacing||0)*i,cue.ends?cue.ends[i]:frequency));
+  }
+  function event(e){
+    const a=CONFIG.audio;
+    if(e.type==='BOUNCE')note(a.bounce.baseHz+e.tier*a.bounce.tierHz,a.bounce.seconds,a.bounce.wave,0,a.bounce.endHz);
+    const cue={
+      PERFECT:a.perfect,
+      STOMP:a.stomp,
+      SNAPBACK:a.save,
+      POINT:a.point,
+      VICTORY:a.victory,
+      OVERDRIVE:a.overdrive,
+      DIVE:a.dive
+    }
+    [e.type];
+    if(cue)phrase(cue);
+  }
+  return {
+    unlock,
+    event,
+    setMuted,
+    setPaused(value){
+      paused=value;
+      if(paused)stop();
+      updateGain();
+    },
+    inspect(){
+      return {
+        initialized:!!context,
+        state:context?context.state:'unavailable',
+        voices:voices.size,
+        muted,
+        paused
+      };
+    }
+  };
+}
+// Browser adapter: input/settings/audio/rendering stay outside gameplay functions.
+function boot(){
+  const canvas=document.getElementById('game');
+  const ctx=canvas.getContext('2d');
+  const s=createMatchState(),
+  input=createInput(),
+  audio=createAudio();
+  const status=document.getElementById('status');
+  let lastPhase=s.phase;
+  function announce(){
+    if(lastPhase===s.phase)return;
+    lastPhase=s.phase;
+    const name=s.winner===0?'Coral':'Mint';
+    status.textContent=s.phase==='MATCH_OVER'?name+' wins. Space or Enter to rematch.':s.phase==='PAUSED'?'Paused. Escape to resume.':s.phase==='RALLY'?'Match in play. First to three.':s.phase==='POINT_FREEZE'?'Point. Next rally starts automatically.':'Snapback. Space to play.';
+  }
+  function resetInputs(){
+    input.clear();
+    clearPlayerPresses(s);
+    driver.reset();
+  }
+  function syncSettings(){
+    const sound=document.getElementById('sound'),
+    motion=document.getElementById('motion');
+    sound.textContent='M · Sound '+(s.muted?'off':'on');
+    sound.setAttribute('aria-pressed',String(s.muted));
+    motion.textContent='V · Motion '+(s.reducedMotion?'reduced':'full');
+    motion.setAttribute('aria-pressed',String(s.reducedMotion));
+    audio.setMuted(s.muted);
+  }
+  function pause(value){
+    setPaused(s,value);
+    resetInputs();
+    audio.setPaused(value||s.phase==='PAUSED');
+    announce();
+  }
+  function command(code,gesture=false){
+    if(gesture)audio.unlock();
+    if(code==='KeyM'){
+      s.muted=!s.muted;
+      syncSettings();
+      return;
+    }
+    if(code==='KeyV'){
+      s.reducedMotion=!s.reducedMotion;
+      syncSettings();
+      return;
+    }
+    if(code==='Escape'&&['RALLY','POINT_FREEZE','PAUSED'].includes(s.phase)){
+      pause(s.phase!=='PAUSED');
+      return;
+    }
+    if((code==='Space'||code==='Enter')&&['TITLE','MATCH_OVER'].includes(s.phase)){
+      startMatch(s);
+      resetInputs();
+      audio.setPaused(false);
+      canvas.focus({
+        preventScroll:true
+      });
+      announce();
+    }
+  }
+  function update(){
+    const priorIndex=s.rallyIndex;
+    const advanced=stepSimulation(s,input.take());
+    if(advanced)for(const e of s.events)audio.event(e);
+    if(s.rallyIndex!==priorIndex)resetInputs();
+    announce();
+  }
+  const driver=createFrameDriver(update,()=>drawGame(ctx,s,performance.now()/1000));
+  function resize(){
+    const scale=Math.min(window.innerWidth/CONFIG.canvas.width,window.innerHeight/CONFIG.canvas.height);
+    const dpr=Math.min(window.devicePixelRatio||1,CONFIG.canvas.maxDpr);
+    canvas.style.width=CONFIG.canvas.width*scale+'px';
+    canvas.style.height=CONFIG.canvas.height*scale+'px';
+    canvas.width=Math.round(CONFIG.canvas.width*dpr);
+    canvas.height=Math.round(CONFIG.canvas.height*dpr);
+    document.getElementById('controls').style.transform='scale('+Math.min(scale,1)+')';
+    document.getElementById('controls').style.transformOrigin='bottom right';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    drawGame(ctx,s,0);
+  }
+  window.addEventListener('keydown',e=>{
+    if(e.target instanceof HTMLButtonElement&&(e.code==='Space'||e.code==='Enter'))return; if(input.keydown(e))command(e.code,e.isTrusted);
+  });
+  window.addEventListener('keyup',e=>{if(e.target instanceof HTMLButtonElement&&(e.code==='Space'||e.code==='Enter'))return;input.keyup(e);});
+  window.addEventListener('blur',()=>pause(true));
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden)pause(true);
+  });
+  window.addEventListener('resize',resize);
+  document.getElementById('sound').addEventListener('click',e=>command('KeyM',e.isTrusted));
+  document.getElementById('motion').addEventListener('click',e=>command('KeyV',e.isTrusted));
+  canvas.addEventListener('pointerdown',e=>{
+    if(e.isTrusted)audio.unlock();canvas.focus({
+      preventScroll:true
+    });if(s.phase==='TITLE')command('Space',e.isTrusted);
+  });
+  function frame(time){
+    driver.frame(time,['RALLY','POINT_FREEZE'].includes(s.phase));
+    requestAnimationFrame(frame);
+  }
+  syncSettings();
+  resize();
+  requestAnimationFrame(frame);
+  canvas.dataset.ready='true';
+  if(testMode)Object.assign(globalThis.SnapbackTest,{
+    getState:()=>s,
+    input,
+    audio,
+    driver,
+    pause,
+    command,
+    render:()=>drawGame(ctx,s,0)
+  });
+}
+const testMode=!!globalThis.__SNAPBACK_TEST__||(typeof location!=='undefined'&&new URLSearchParams(location.search).has('test'));
+if(testMode)globalThis.SnapbackTest={
+  CONFIG,
+  NEVER,
+  PLAYER_KEYS,
+  createPlayer,
+  createNet,
+  createMatchState,
+  resetRally,
+  startMatch,
+  setPaused,
+  clearPlayerPresses,
+  netBounds,
+  sampleNetAt,
+  stepNet,
+  impactNet,
+  acceptPresses,
+  steerAndMove,
+  bodyContact,
+  resolvePlayerContact,
+  resolveBumperSave,
+  resolveNetLandings,
+  findNetLanding,
+  resolveRallyOutcome,
+  stepSimulation,
+  createInput,
+  createFrameDriver,
+  landingSoon,
+  createAudio,
+  drawGame
+};
+if(typeof document!=='undefined')boot();
+</script></body></html>

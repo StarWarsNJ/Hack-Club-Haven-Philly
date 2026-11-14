@@ -1,3 +1,5 @@
+> Current repository: open index.html directly to play the implemented two-player game. Read docs/QA_REPORT.md for executed checks and remaining human playtests. The specification-kit installation steps below are retained as reference.
+
 # START HERE — Snapback multiplayer kit
 
 This kit defines **Snapback**, a one-screen, competitive, two-human, one-keyboard browser game for the theme *Bounce Back*.

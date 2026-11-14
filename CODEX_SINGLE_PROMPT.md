@@ -1,3 +1,5 @@
+> Reusable original build brief. The current game is implemented in index.html; use README.md and docs/QA_REPORT.md for current status. This brief remains the specification reference, not a claim that implementation is pending.
+
 # Single complete Codex prompt — Snapback multiplayer
 
 **ROLE AND AUTONOMOUS OBJECTIVE**

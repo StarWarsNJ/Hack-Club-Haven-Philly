@@ -1,3 +1,5 @@
+> Execution record: docs/QA_REPORT.md now contains actual automated/browser results and remaining human-only work. The checkboxes below retain the supplied acceptance matrix; do not interpret an unchecked mixed/manual item as an invented test pass.
+
 # Snapback — Test Strategy and Acceptance Matrix
 
 ## 0. Evidence standard

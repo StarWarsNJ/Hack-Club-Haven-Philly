@@ -1,3 +1,5 @@
+> Historical specification-kit installation guide. This repository now contains the implemented index.html; open it directly to play. README.md and docs/QA_REPORT.md describe the current game and actual validation. Future-tense setup text below describes the original kit.
+
 # Installing the Snapback Multiplayer Codex Kit
 
 This kit is a **specification and instruction package**. It does not contain a game yet. Codex will create `index.html` after you give it the Goal.

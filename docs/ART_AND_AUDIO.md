@@ -102,3 +102,17 @@ User gesture must initialize or resume AudioContext; never rely on sound autopla
 ## 10. Visual acceptance
 
 Codex must inspect real browser screenshots or rendered gameplay if available: title, active rally, perfect bounce, stomp, Snapback Save, pause, point, and winner. Compare spacing, clipping, contrast, text size, silhouette overlap, and pit clarity. If screenshots or visual inspection cannot be executed in its environment, say so in `docs/QA_REPORT.md` and leave a precise manual inspection checklist. Passing source-code inspection **does not prove visual polish**.
+
+## 11. Implemented presentation — 2026-11-14
+
+The runtime now contains original Canvas paths, polygons, lines, circles, and locally synthesized Web Audio. It has no external image, font, audio, stylesheet, or script requests. System font fallbacks provide typography; the title wordmark is letter-positioned with a restrained elastic bend. The specification above remains the creative reference, while this section records implemented facts rather than certifying subjective polish.
+
+- Coral has an angular crest/headband; Mint has a rounded visor/antenna. Numbered names and diamond/circle tier pips distinguish players beyond color. The HUD shows all five tier pips, a save-charge icon with SAVE/USED, the score, and first-to-three/rally labels.
+- The net cord and under-mesh are drawn from the authoritative physics samples. Gold anchor posts follow the active Overdrive endpoints. Dark side pits and visibly positioned vertical save bands mark the arena; a charged athlete approaching a physically plausible contact receives a player-specific W/Up prompt.
+- Title, active rally, point/draw, pause, and match-winner views share the ink/ivory/coral/mint/gold palette. The title has an animated decorative net/athlete demonstration; starting play does not wait for it. The pause view repeats controls and current audio/motion settings. The winner view offers immediate Space/Enter rematch.
+- Landing squash, aerial stretch/lean, short dive/save trails, a visible anti-juggle outline, directional impact marks, and concise PERFECT/STOMP/SNAPBACK notices derive from committed state. Essential net motion and event labels remain when reduced motion suppresses shake, decorative trails/impact marks, lean, and squash/stretch. No gameplay input is frozen for decorative hit-stop.
+- `CONFIG.audio` defines local oscillator/envelope cues for ordinary/perfect bounce, stomp, save, scoring, victory, Overdrive, and a throttled dive entry. Sound is user-gesture enabled, can be muted, and has a silent fallback. Pause/mute stop voices, all oscillator/gain nodes release on completion or failure, and a 20-voice cap bounds scheduling. No background music file or downloaded sample is used.
+
+Executed automated audio checks distinguish all six required cue signatures and cover lazy initialization, blocked/unavailable devices, resume rejection, voice bounds, natural completion, mute/pause, and partial-node failure cleanup. This proves scheduling/lifecycle behavior in a fake audio graph, not audible balance, latency, speaker output, or human preference.
+
+Final screenshot inspection at multiple sizes, audio-device listening, physical keyboard use, and two-person reactions are separate verification tasks. Consult `docs/QA_REPORT.md` for what actually ran; do not infer a visual or audible pass from these implementation notes.
